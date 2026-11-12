@@ -203,7 +203,7 @@ install_xray() {
   [ "$(jq -r '.inbounds[0].users[0].uuid' "$TB_SINGBOX_CONFIG")" = "$uuid" ]
 }
 
-@test "install: a foreign configuration is kept unless --yes is given" {
+@test "install: a foreign configuration is only replaced with --overwrite-config" {
   install_fake_cores
   mkdir -p "$(dirname "$TB_XRAY_CONFIG")"
   echo '{"inbounds": [{"port": 1234}]}' >"$TB_XRAY_CONFIG"
@@ -214,10 +214,16 @@ install_xray() {
     tb_main install --core xray --protocols ss --server-addr 203.0.113.10 --ss-port 28443 </dev/null
   ' _ "$REPO_ROOT"
   [ "$status" -ne 0 ]
-  [[ "$output" == *"--yes"* ]]
+  [[ "$output" == *"--overwrite-config"* ]]
   [ "$(jq -r '.inbounds[0].port' "$TB_XRAY_CONFIG")" = "1234" ]
 
+  # --yes alone must not replace it either.
   run_toastbox install -y --core xray --protocols ss --server-addr 203.0.113.10 --ss-port 28443
+  [ "$status" -ne 0 ]
+  [ "$(jq -r '.inbounds[0].port' "$TB_XRAY_CONFIG")" = "1234" ]
+  [ ! -e "$TB_STATE_FILE" ]
+
+  run_toastbox install -y --overwrite-config --core xray --protocols ss --server-addr 203.0.113.10 --ss-port 28443
   [ "$status" -eq 0 ]
   [ "$(jq -r '.inbounds[0].port' "$TB_XRAY_CONFIG")" = "28443" ]
   # The foreign configuration is preserved as a backup.
@@ -439,7 +445,7 @@ install_xray() {
   mkdir -p "$(dirname "$TB_SINGBOX_CONFIG")"
   echo '{"inbounds": [{"type": "shadowsocks", "listen_port": 8080}]}' >"$TB_SINGBOX_CONFIG"
   export MOCK_SERVICE_INACTIVE=1 MOCK_RESTART_FAILS=1
-  run_toastbox install -y --core sing-box --protocols ss --server-addr 203.0.113.10 --ss-port 28443
+  run_toastbox install -y --overwrite-config --core sing-box --protocols ss --server-addr 203.0.113.10 --ss-port 28443
   [ "$status" -ne 0 ]
   [[ "$output" == *"left stopped"* ]]
   # One start attempt (ours), then stopped: no restart on the old file.
@@ -486,4 +492,15 @@ install_xray() {
   [[ "$(calls)" == *"remove xray purge=0"* ]]
   [[ "$(calls)" != *"remove sing-box"* ]]
   [ "$(state .core)" = "sing-box" ]
+}
+
+@test "interactive: a foreign configuration can be replaced at the prompt" {
+  install_fake_cores
+  mkdir -p "$(dirname "$TB_XRAY_CONFIG")"
+  echo '{"inbounds": [{"port": 1234}]}' >"$TB_XRAY_CONFIG"
+  #       proceed overwrite
+  answers y       y
+  run_toastbox install --lang en --core xray --protocols ss --server-addr 203.0.113.10 --ss-port 28443 --ss-method 1
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.inbounds[0].port' "$TB_XRAY_CONFIG")" = "28443" ]
 }
