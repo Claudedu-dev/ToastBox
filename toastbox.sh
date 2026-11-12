@@ -285,7 +285,7 @@ TB_MSG_EN[err_port_in_use]='Port %s is already in use by: %s'
 TB_MSG_EN[plan_title]='About to deploy:'
 TB_MSG_EN[prompt_proceed]='Proceed?'
 
-TB_MSG_EN[warn_core_switch]='Switching core from %s to %s. The %s service will be stopped and disabled.'
+TB_MSG_EN[warn_core_switch]='Switching core from %s to %s. The %s service is stopped and disabled once the new core is ready.'
 TB_MSG_EN[prompt_overwrite_config]='%s already holds a configuration that ToastBox did not write. Replace it? (A backup is kept.)'
 TB_MSG_EN[err_foreign_config]='Kept the existing configuration %s. Re-run with --yes to replace it.'
 TB_MSG_EN[info_installing_core]='Installing %s from its official source...'
@@ -298,6 +298,8 @@ TB_MSG_EN[info_restarting]='Restarting %s...'
 TB_MSG_EN[ok_service_running]='%s is running.'
 TB_MSG_EN[err_service_start]='%s failed to start with the new configuration. Recent log:'
 TB_MSG_EN[warn_rolled_back]='Restored the previous configuration from %s.'
+TB_MSG_EN[warn_service_stopped]='%s was not running before this change and has been left stopped.'
+TB_MSG_EN[warn_old_core_restored]='Started the previous %s service again.'
 TB_MSG_EN[err_apply]='The configuration was not applied.'
 TB_MSG_EN[info_fw_opened]='Firewall (ufw): allowed %s'
 TB_MSG_EN[info_fw_closed]='Firewall (ufw): removed rule %s'
@@ -312,6 +314,7 @@ TB_MSG_EN[prompt_uninstall]='Remove %s and this node? (Configuration files are k
 TB_MSG_EN[prompt_uninstall_purge]='Remove %s, this node and ALL of its configuration, logs and backups?'
 TB_MSG_EN[warn_remove_failed]='Removing %s reported an error; check the output above.'
 TB_MSG_EN[ok_uninstalled]='%s and the ToastBox node were removed.'
+TB_MSG_EN[ok_core_removed]='%s was removed. The node on %s is untouched.'
 TB_MSG_EN[warn_no_qrencode]='qrencode is not available, skipping the QR code.'
 
 TB_MSG_EN[word_running]='running'
@@ -456,7 +459,7 @@ TB_MSG_ZH[err_port_in_use]='端口 %s 已被占用：%s'
 TB_MSG_ZH[plan_title]='即将部署：'
 TB_MSG_ZH[prompt_proceed]='继续？'
 
-TB_MSG_ZH[warn_core_switch]='内核将由 %s 切换为 %s，%s 服务会被停止并禁用。'
+TB_MSG_ZH[warn_core_switch]='内核将由 %s 切换为 %s，新内核就绪后 %s 服务会被停止并禁用。'
 TB_MSG_ZH[prompt_overwrite_config]='%s 中已有一份并非由 ToastBox 生成的配置。是否替换？（会保留备份。）'
 TB_MSG_ZH[err_foreign_config]='已保留现有配置 %s。如需替换，请加上 --yes 重新运行。'
 TB_MSG_ZH[info_installing_core]='正在从官方渠道安装 %s……'
@@ -469,6 +472,8 @@ TB_MSG_ZH[info_restarting]='正在重启 %s……'
 TB_MSG_ZH[ok_service_running]='%s 正在运行。'
 TB_MSG_ZH[err_service_start]='%s 使用新配置启动失败。最近的日志：'
 TB_MSG_ZH[warn_rolled_back]='已从 %s 恢复之前的配置。'
+TB_MSG_ZH[warn_service_stopped]='%s 在本次更改之前并未运行，现已保持停止状态。'
+TB_MSG_ZH[warn_old_core_restored]='已重新启动之前的 %s 服务。'
 TB_MSG_ZH[err_apply]='配置未生效。'
 TB_MSG_ZH[info_fw_opened]='防火墙（ufw）：已放行 %s'
 TB_MSG_ZH[info_fw_closed]='防火墙（ufw）：已移除规则 %s'
@@ -483,6 +488,7 @@ TB_MSG_ZH[prompt_uninstall]='移除 %s 和此节点？（配置文件会保留�
 TB_MSG_ZH[prompt_uninstall_purge]='移除 %s、此节点及其全部配置、日志和备份？'
 TB_MSG_ZH[warn_remove_failed]='移除 %s 时出现错误，请查看上方输出。'
 TB_MSG_ZH[ok_uninstalled]='%s 和 ToastBox 节点已移除。'
+TB_MSG_ZH[ok_core_removed]='%s 已移除，运行在 %s 上的节点不受影响。'
 TB_MSG_ZH[warn_no_qrencode]='qrencode 不可用，跳过二维码。'
 
 TB_MSG_ZH[word_running]='运行中'
@@ -853,16 +859,19 @@ port_owners() {
   printf '%s\n' "${names:-?}"
 }
 
-# port_conflict PROTO PORT OWN_PROCESS: succeeds (and prints the offending
-# process names) when the port is taken by anything other than OWN_PROCESS.
+# port_conflict PROTO PORT OWN_PROCESS...: succeeds (and prints the offending
+# process names) when the port is taken by anything other than the listed
+# processes.
 port_conflict() {
-  local proto="$1" port="$2" own="$3" owners others
-  owners="$(port_owners "$proto" "$port")"
-  [[ -n "$owners" ]] || return 1
-  others="$(printf '%s\n' "$owners" | grep -vx -- "$own" || true)"
-  [[ -n "$others" ]] || return 1
-  printf '%s' "$(printf '%s' "$others" | tr '\n' ' ')"
-  return 0
+  local proto="$1" port="$2" owner
+  local -a others=()
+  shift 2
+  while IFS= read -r owner; do
+    [[ -n "$owner" ]] || continue
+    in_list "$owner" "$@" || others+=("$owner")
+  done < <(port_owners "$proto" "$port")
+  ((${#others[@]} > 0)) || return 1
+  printf '%s' "${others[*]}"
 }
 
 random_free_port() {
@@ -2314,19 +2323,23 @@ print_plan() {
 # Building blocks
 # ---------------------------------------------------------------------------
 
+# preflight_ports [EXTRA_PROCESS]: fails when a wanted port is held by
+# another program. Our own core is fine, and so is the core that is about
+# to be replaced (EXTRA_PROCESS): it is stopped before the new one starts.
 preflight_ports() {
-  local own procs
-  own="$(core_call process)"
+  local procs
+  local -a own=("$(core_call process)")
+  [[ -n "${1:-}" ]] && own+=("$1")
   if [[ "$CFG_VLESS" == "1" ]]; then
-    if procs="$(port_conflict tcp "$CFG_VLESS_PORT" "$own")"; then
+    if procs="$(port_conflict tcp "$CFG_VLESS_PORT" "${own[@]}")"; then
       die err_port_in_use "$CFG_VLESS_PORT/tcp" "$procs"
     fi
   fi
   if [[ "$CFG_SS" == "1" ]]; then
-    if [[ "$CFG_SS_NETWORK" != "udp" ]] && procs="$(port_conflict tcp "$CFG_SS_PORT" "$own")"; then
+    if [[ "$CFG_SS_NETWORK" != "udp" ]] && procs="$(port_conflict tcp "$CFG_SS_PORT" "${own[@]}")"; then
       die err_port_in_use "$CFG_SS_PORT/tcp" "$procs"
     fi
-    if [[ "$CFG_SS_NETWORK" != "tcp" ]] && procs="$(port_conflict udp "$CFG_SS_PORT" "$own")"; then
+    if [[ "$CFG_SS_NETWORK" != "tcp" ]] && procs="$(port_conflict udp "$CFG_SS_PORT" "${own[@]}")"; then
       die err_port_in_use "$CFG_SS_PORT/udp" "$procs"
     fi
   fi
@@ -2351,10 +2364,20 @@ ensure_core() {
   log_ok ok_core_ready "$CFG_CORE" "$version"
 }
 
-# Renders, validates, installs and activates the configuration. If the
-# service does not come up, the previous configuration is restored.
+# apply_config [OLD_SERVICE]: renders, validates, installs and activates
+# the configuration.
+#
+# OLD_SERVICE is the service of a core that is being replaced. It is only
+# stopped once the new configuration has passed validation, and it is
+# started again if the new core does not come up.
+#
+# On failure the previous configuration file is restored, but the service
+# is only restarted on it if it was running before: a configuration that
+# was merely lying around (such as the sample shipped in the sing-box
+# package) must never be put into service by a rollback.
 apply_config() {
-  local new="$TB_TMP/config.json" path svc backup="" output
+  local old_svc="${1:-}"
+  local new="$TB_TMP/config.json" path svc backup="" output was_active=0
   path="$(core_call config_path)"
   svc="$(core_call service)"
 
@@ -2364,6 +2387,10 @@ apply_config() {
     die err_validate "$CFG_CORE"
   fi
 
+  service_is_active "$svc" && was_active=1
+  if [[ -n "$old_svc" ]]; then
+    service_stop_disable "$old_svc"
+  fi
   backup="$(backup_file "$path" "$CFG_CORE-config")"
   core_call install_config "$new"
   log_info info_restarting "$svc"
@@ -2376,8 +2403,17 @@ apply_config() {
   service_show_log "$svc"
   if [[ -n "$backup" ]]; then
     core_call install_config "$backup"
-    service_restart_checked "$svc" || true
     log_warn warn_rolled_back "$backup"
+  fi
+  if [[ "$was_active" == "1" && -n "$backup" ]]; then
+    service_restart_checked "$svc" || true
+  else
+    service_stop_disable "$svc"
+    log_warn warn_service_stopped "$svc"
+  fi
+  if [[ -n "$old_svc" ]]; then
+    service_restart_checked "$old_svc" || true
+    log_warn warn_old_core_restored "$old_svc"
   fi
   return 1
 }
@@ -2427,7 +2463,7 @@ self_install() {
 # ---------------------------------------------------------------------------
 
 cmd_install() {
-  local prev_core core_preinstalled=0 path
+  local prev_core core_preinstalled=0 path old_svc="" old_proc=""
 
   require_root
   detect_os
@@ -2447,7 +2483,8 @@ cmd_install() {
 
   if [[ -n "$prev_core" && "$prev_core" != "$CFG_CORE" ]]; then
     log_warn warn_core_switch "$prev_core" "$CFG_CORE" "$prev_core"
-    service_stop_disable "$(core_fn "$prev_core" service)"
+    old_svc="$(core_fn "$prev_core" service)"
+    old_proc="$(core_fn "$prev_core" process)"
   fi
 
   # A core that was installed by someone else may carry a configuration
@@ -2459,10 +2496,10 @@ cmd_install() {
     confirm n prompt_overwrite_config "$path" || die err_foreign_config "$path"
   fi
 
-  preflight_ports
+  preflight_ports "$old_proc"
   ensure_core
   ensure_credentials
-  apply_config || die err_apply
+  apply_config "$old_svc" || die err_apply
   sync_firewall
   state_save
   self_install
@@ -2526,11 +2563,17 @@ cmd_uninstall() {
     confirm n prompt_uninstall "$core" || die err_aborted
   fi
 
-  fw_close_all
   service_stop_disable "$(core_fn "$core" service)"
   if core_fn "$core" is_installed; then
     core_fn "$core" remove "$OPT_PURGE" || log_warn warn_remove_failed "$core"
   fi
+  # --core can name a core the node does not run on (a leftover from before
+  # a switch): then only that core goes, the node itself stays.
+  if [[ "$TB_HAS_STATE" == "1" && "$core" != "$CFG_CORE" ]]; then
+    log_ok ok_core_removed "$core" "$CFG_CORE"
+    return 0
+  fi
+  fw_close_all
   if [[ "$OPT_PURGE" == "1" ]]; then
     rm -rf "$TB_STATE_DIR"
   else

@@ -19,7 +19,7 @@ service_restart_checked() {
   [[ -z "${MOCK_RESTART_FAILS:-}" ]]
 }
 service_stop_disable() { echo "stop $1" >>"$MOCK_LOG"; }
-service_is_active() { return 0; }
+service_is_active() { [[ -z "${MOCK_SERVICE_INACTIVE:-}" ]]; }
 service_show_log() { :; }
 
 xray_install() {

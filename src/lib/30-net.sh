@@ -91,16 +91,19 @@ port_owners() {
   printf '%s\n' "${names:-?}"
 }
 
-# port_conflict PROTO PORT OWN_PROCESS: succeeds (and prints the offending
-# process names) when the port is taken by anything other than OWN_PROCESS.
+# port_conflict PROTO PORT OWN_PROCESS...: succeeds (and prints the offending
+# process names) when the port is taken by anything other than the listed
+# processes.
 port_conflict() {
-  local proto="$1" port="$2" own="$3" owners others
-  owners="$(port_owners "$proto" "$port")"
-  [[ -n "$owners" ]] || return 1
-  others="$(printf '%s\n' "$owners" | grep -vx -- "$own" || true)"
-  [[ -n "$others" ]] || return 1
-  printf '%s' "$(printf '%s' "$others" | tr '\n' ' ')"
-  return 0
+  local proto="$1" port="$2" owner
+  local -a others=()
+  shift 2
+  while IFS= read -r owner; do
+    [[ -n "$owner" ]] || continue
+    in_list "$owner" "$@" || others+=("$owner")
+  done < <(port_owners "$proto" "$port")
+  ((${#others[@]} > 0)) || return 1
+  printf '%s' "${others[*]}"
 }
 
 random_free_port() {

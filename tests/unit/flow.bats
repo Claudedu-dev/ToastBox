@@ -12,7 +12,7 @@ setup() {
   : >"$MOCK_LOG"
   unset MOCK_RESTART_FAILS MOCK_BUSY_PORT MOCK_PROBE_RC MOCK_DETECTED_ADDR \
     MOCK_CLOCK_UNSYNCED MOCK_FW_BACKEND FAKE_CORE_REJECT FAKE_XRAY_VERSION FAKE_SINGBOX_VERSION \
-    MOCK_ANSWERS MOCK_PROBE_FAIL_SNI
+    MOCK_ANSWERS MOCK_PROBE_FAIL_SNI MOCK_SERVICE_INACTIVE
 }
 
 # answers LINE...: the replies a user would type, one per prompt.
@@ -430,4 +430,60 @@ install_xray() {
   [[ "$(calls)" == *"[28443]"* ]]
   [ "$(state .vless.uuid)" = "$uuid" ]
   [ "$(state .vless.port)" = "443" ]
+}
+
+@test "rollback: a config that was not in service is never started" {
+  # The sing-box package ships a sample config (a Shadowsocks server with a
+  # published password) and leaves the service stopped.
+  install_fake_cores
+  mkdir -p "$(dirname "$TB_SINGBOX_CONFIG")"
+  echo '{"inbounds": [{"type": "shadowsocks", "listen_port": 8080}]}' >"$TB_SINGBOX_CONFIG"
+  export MOCK_SERVICE_INACTIVE=1 MOCK_RESTART_FAILS=1
+  run_toastbox install -y --core sing-box --protocols ss --server-addr 203.0.113.10 --ss-port 28443
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"left stopped"* ]]
+  # One start attempt (ours), then stopped: no restart on the old file.
+  [ "$(grep -c '^restart sing-box' "$MOCK_LOG")" -eq 1 ]
+  [ "$(tail -n 1 "$MOCK_LOG")" = "stop sing-box" ]
+  [ ! -e "$TB_STATE_FILE" ]
+}
+
+@test "core switch: the old core keeps running until the new one is validated" {
+  install_xray
+  : >"$MOCK_LOG"
+  export FAKE_CORE_REJECT=1
+  run_toastbox install -y --core sing-box
+  [ "$status" -ne 0 ]
+  [[ "$(calls)" != *"stop xray"* ]]
+  [ "$(state .core)" = "xray" ]
+}
+
+@test "core switch: the old core is started again when the new one fails" {
+  install_xray
+  : >"$MOCK_LOG"
+  export MOCK_RESTART_FAILS=1 MOCK_SERVICE_INACTIVE=1
+  run_toastbox install -y --core sing-box
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Started the previous xray service again"* ]]
+  [ "$(tail -n 1 "$MOCK_LOG")" = "restart xray" ]
+  [ "$(state .core)" = "xray" ]
+}
+
+@test "core switch: ports held by the old core are not a conflict" {
+  install_xray
+  export MOCK_BUSY_PORT="tcp:443:xray"
+  run_toastbox install -y --core sing-box
+  [ "$status" -eq 0 ]
+  [ "$(state .core)" = "sing-box" ]
+}
+
+@test "uninstall --core: removing a leftover core keeps the node" {
+  install_xray
+  run_toastbox install -y --core sing-box
+  : >"$MOCK_LOG"
+  run_toastbox uninstall -y --core xray
+  [ "$status" -eq 0 ]
+  [[ "$(calls)" == *"remove xray purge=0"* ]]
+  [[ "$(calls)" != *"remove sing-box"* ]]
+  [ "$(state .core)" = "sing-box" ]
 }

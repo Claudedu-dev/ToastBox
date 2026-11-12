@@ -421,19 +421,23 @@ print_plan() {
 # Building blocks
 # ---------------------------------------------------------------------------
 
+# preflight_ports [EXTRA_PROCESS]: fails when a wanted port is held by
+# another program. Our own core is fine, and so is the core that is about
+# to be replaced (EXTRA_PROCESS): it is stopped before the new one starts.
 preflight_ports() {
-  local own procs
-  own="$(core_call process)"
+  local procs
+  local -a own=("$(core_call process)")
+  [[ -n "${1:-}" ]] && own+=("$1")
   if [[ "$CFG_VLESS" == "1" ]]; then
-    if procs="$(port_conflict tcp "$CFG_VLESS_PORT" "$own")"; then
+    if procs="$(port_conflict tcp "$CFG_VLESS_PORT" "${own[@]}")"; then
       die err_port_in_use "$CFG_VLESS_PORT/tcp" "$procs"
     fi
   fi
   if [[ "$CFG_SS" == "1" ]]; then
-    if [[ "$CFG_SS_NETWORK" != "udp" ]] && procs="$(port_conflict tcp "$CFG_SS_PORT" "$own")"; then
+    if [[ "$CFG_SS_NETWORK" != "udp" ]] && procs="$(port_conflict tcp "$CFG_SS_PORT" "${own[@]}")"; then
       die err_port_in_use "$CFG_SS_PORT/tcp" "$procs"
     fi
-    if [[ "$CFG_SS_NETWORK" != "tcp" ]] && procs="$(port_conflict udp "$CFG_SS_PORT" "$own")"; then
+    if [[ "$CFG_SS_NETWORK" != "tcp" ]] && procs="$(port_conflict udp "$CFG_SS_PORT" "${own[@]}")"; then
       die err_port_in_use "$CFG_SS_PORT/udp" "$procs"
     fi
   fi
@@ -458,10 +462,20 @@ ensure_core() {
   log_ok ok_core_ready "$CFG_CORE" "$version"
 }
 
-# Renders, validates, installs and activates the configuration. If the
-# service does not come up, the previous configuration is restored.
+# apply_config [OLD_SERVICE]: renders, validates, installs and activates
+# the configuration.
+#
+# OLD_SERVICE is the service of a core that is being replaced. It is only
+# stopped once the new configuration has passed validation, and it is
+# started again if the new core does not come up.
+#
+# On failure the previous configuration file is restored, but the service
+# is only restarted on it if it was running before: a configuration that
+# was merely lying around (such as the sample shipped in the sing-box
+# package) must never be put into service by a rollback.
 apply_config() {
-  local new="$TB_TMP/config.json" path svc backup="" output
+  local old_svc="${1:-}"
+  local new="$TB_TMP/config.json" path svc backup="" output was_active=0
   path="$(core_call config_path)"
   svc="$(core_call service)"
 
@@ -471,6 +485,10 @@ apply_config() {
     die err_validate "$CFG_CORE"
   fi
 
+  service_is_active "$svc" && was_active=1
+  if [[ -n "$old_svc" ]]; then
+    service_stop_disable "$old_svc"
+  fi
   backup="$(backup_file "$path" "$CFG_CORE-config")"
   core_call install_config "$new"
   log_info info_restarting "$svc"
@@ -483,8 +501,17 @@ apply_config() {
   service_show_log "$svc"
   if [[ -n "$backup" ]]; then
     core_call install_config "$backup"
-    service_restart_checked "$svc" || true
     log_warn warn_rolled_back "$backup"
+  fi
+  if [[ "$was_active" == "1" && -n "$backup" ]]; then
+    service_restart_checked "$svc" || true
+  else
+    service_stop_disable "$svc"
+    log_warn warn_service_stopped "$svc"
+  fi
+  if [[ -n "$old_svc" ]]; then
+    service_restart_checked "$old_svc" || true
+    log_warn warn_old_core_restored "$old_svc"
   fi
   return 1
 }
@@ -534,7 +561,7 @@ self_install() {
 # ---------------------------------------------------------------------------
 
 cmd_install() {
-  local prev_core core_preinstalled=0 path
+  local prev_core core_preinstalled=0 path old_svc="" old_proc=""
 
   require_root
   detect_os
@@ -554,7 +581,8 @@ cmd_install() {
 
   if [[ -n "$prev_core" && "$prev_core" != "$CFG_CORE" ]]; then
     log_warn warn_core_switch "$prev_core" "$CFG_CORE" "$prev_core"
-    service_stop_disable "$(core_fn "$prev_core" service)"
+    old_svc="$(core_fn "$prev_core" service)"
+    old_proc="$(core_fn "$prev_core" process)"
   fi
 
   # A core that was installed by someone else may carry a configuration
@@ -566,10 +594,10 @@ cmd_install() {
     confirm n prompt_overwrite_config "$path" || die err_foreign_config "$path"
   fi
 
-  preflight_ports
+  preflight_ports "$old_proc"
   ensure_core
   ensure_credentials
-  apply_config || die err_apply
+  apply_config "$old_svc" || die err_apply
   sync_firewall
   state_save
   self_install
@@ -633,11 +661,17 @@ cmd_uninstall() {
     confirm n prompt_uninstall "$core" || die err_aborted
   fi
 
-  fw_close_all
   service_stop_disable "$(core_fn "$core" service)"
   if core_fn "$core" is_installed; then
     core_fn "$core" remove "$OPT_PURGE" || log_warn warn_remove_failed "$core"
   fi
+  # --core can name a core the node does not run on (a leftover from before
+  # a switch): then only that core goes, the node itself stays.
+  if [[ "$TB_HAS_STATE" == "1" && "$core" != "$CFG_CORE" ]]; then
+    log_ok ok_core_removed "$core" "$CFG_CORE"
+    return 0
+  fi
+  fw_close_all
   if [[ "$OPT_PURGE" == "1" ]]; then
     rm -rf "$TB_STATE_DIR"
   else
