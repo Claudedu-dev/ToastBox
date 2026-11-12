@@ -72,6 +72,7 @@ sudo bash toastbox.sh install -y \
 | `--allow-private` | off | Allow relaying to private / loopback addresses |
 | `--core-version VERSION` | latest | Install this core version |
 | `--no-firewall` | | Do not touch ufw |
+| `--overwrite-config` | | Replace a configuration ToastBox did not write; `-y` alone never does |
 
 General: `-y` / `--yes` (never prompt), `--lang en|zh`, `--help`.
 
@@ -83,7 +84,7 @@ sudo toastbox show --qr                     # with QR codes
 sudo toastbox show --format links           # share links only
 sudo toastbox show --format xray            # complete Xray client configuration
 sudo toastbox show --format sing-box        # complete sing-box client configuration
-sudo toastbox show --format json            # machine-readable
+sudo toastbox show --format json            # machine-readable (no REALITY private key)
 sudo toastbox show --format xray --protocols ss   # one protocol only
 ```
 
@@ -109,7 +110,7 @@ Shadowsocks 2022 also needs both clocks to roughly agree. The script warns when 
 
 ### Security defaults
 
-- The node refuses to relay to loopback, private and link-local addresses (where cloud metadata endpoints live). Use `--allow-private` if you really need to reach the server's internal network.
+- The node refuses to relay to loopback, private and link-local addresses (where cloud metadata endpoints live) when they are given as IP addresses. This is not complete isolation: a domain name that resolves to a private address is not caught. Use `--allow-private` if you really need to reach the server's internal network.
 - Xray's access log is off; sing-box logs at `warn`.
 - `--block-bt` relies on sniffing. With it, protocols where the server speaks first (SSH, SMTP) wait a moment longer when a connection is set up.
 - Configuration and state hold private keys: the Xray configuration is `root:xray 0640`, the sing-box configuration and `state.json` are `root 0600`.

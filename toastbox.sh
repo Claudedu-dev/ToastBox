@@ -287,7 +287,7 @@ TB_MSG_EN[prompt_proceed]='Proceed?'
 
 TB_MSG_EN[warn_core_switch]='Switching core from %s to %s. The %s service is stopped and disabled once the new core is ready.'
 TB_MSG_EN[prompt_overwrite_config]='%s already holds a configuration that ToastBox did not write. Replace it? (A backup is kept.)'
-TB_MSG_EN[err_foreign_config]='Kept the existing configuration %s. Re-run with --yes to replace it.'
+TB_MSG_EN[err_foreign_config]='Kept the existing configuration %s. Re-run with --overwrite-config to replace it.'
 TB_MSG_EN[info_installing_core]='Installing %s from its official source...'
 TB_MSG_EN[err_core_install]='Installing %s failed.'
 TB_MSG_EN[err_core_too_old]='%s %s is too old: ToastBox needs %s or newer. Run "update" to upgrade it.'
@@ -379,6 +379,8 @@ Options for install:
                               (--no-allow-private to undo)
   --core-version VERSION      Install this core version instead of the latest
   --no-firewall               Do not touch ufw
+  --overwrite-config          Replace a configuration ToastBox did not write
+                              (--yes alone never does)
 
 Options for show:
   --format FORMAT             text (default), links, json, xray, sing-box
@@ -461,7 +463,7 @@ TB_MSG_ZH[prompt_proceed]='继续？'
 
 TB_MSG_ZH[warn_core_switch]='内核将由 %s 切换为 %s，新内核就绪后 %s 服务会被停止并禁用。'
 TB_MSG_ZH[prompt_overwrite_config]='%s 中已有一份并非由 ToastBox 生成的配置。是否替换？（会保留备份。）'
-TB_MSG_ZH[err_foreign_config]='已保留现有配置 %s。如需替换，请加上 --yes 重新运行。'
+TB_MSG_ZH[err_foreign_config]='已保留现有配置 %s。如需替换，请加上 --overwrite-config 重新运行。'
 TB_MSG_ZH[info_installing_core]='正在从官方渠道安装 %s……'
 TB_MSG_ZH[err_core_install]='安装 %s 失败。'
 TB_MSG_ZH[err_core_too_old]='%s %s 版本过旧：ToastBox 需要 %s 或更高版本。请执行 update 升级。'
@@ -553,6 +555,8 @@ install 的选项：
                               （--no-allow-private 取消）
   --core-version VERSION      安装指定版本的内核，而不是最新版
   --no-firewall               不修改 ufw
+  --overwrite-config          替换并非由 ToastBox 生成的现有配置
+                              （仅有 --yes 不会替换）
 
 show 的选项：
   --format FORMAT             text（默认）、links、json、xray、sing-box
@@ -1788,14 +1792,16 @@ client_singbox_json() {
     }'
 }
 
-# Machine-readable description: the state plus the share links.
+# Machine-readable description: the state plus the share links. The REALITY
+# private key is left out: no client needs it, and this output tends to get
+# pasted into issues and chats.
 show_json() {
   local vless_uri="" ss_uri=""
   [[ "$OUT_VLESS" == "1" ]] && vless_uri="$(vless_link)"
   [[ "$OUT_SS" == "1" ]] && ss_uri="$(ss_link)"
   state_json | jq --arg vless "$vless_uri" --arg ss "$ss_uri" \
     --arg version "$TB_VERSION" '
-    del(.firewall, .schema)
+    del(.firewall, .schema, .vless.private_key)
     + {toastbox_version: $version}
     + {links: ({} + (if $vless != "" then {vless: $vless} else {} end)
                   + (if $ss != "" then {ss: $ss} else {} end))}'
@@ -1943,6 +1949,7 @@ opt_reset() {
   OPT_ALLOW_PRIVATE=""
   OPT_CORE_VERSION=""
   OPT_NO_FIREWALL=0
+  OPT_OVERWRITE_CONFIG=0
   OPT_FORMAT=""
   OPT_QR=0
   OPT_PURGE=0
@@ -2001,6 +2008,7 @@ parse_args() {
       --allow-private) OPT_ALLOW_PRIVATE=1 ;;
       --no-allow-private) OPT_ALLOW_PRIVATE=0 ;;
       --no-firewall) OPT_NO_FIREWALL=1 ;;
+      --overwrite-config) OPT_OVERWRITE_CONFIG=1 ;;
       --qr) OPT_QR=1 ;;
       --purge) OPT_PURGE=1 ;;
       *) die err_unknown_arg "$arg" ;;
@@ -2487,13 +2495,17 @@ cmd_install() {
     old_proc="$(core_fn "$prev_core" process)"
   fi
 
-  # A core that was installed by someone else may carry a configuration
-  # worth keeping: ask before replacing it. (A backup is made either way.)
+  # A core that was installed by someone else (a panel, a hand-made node)
+  # may carry a configuration that is in use. Replacing it takes an explicit
+  # answer at the prompt or --overwrite-config; --yes alone is not enough.
+  # (A backup is made either way.)
   core_call is_installed && core_preinstalled=1
   path="$(core_call config_path)"
   if [[ "$core_preinstalled" == "1" && "$prev_core" != "$CFG_CORE" && -s "$path" ]] &&
-    [[ "$(tr -d '[:space:]' <"$path")" != "{}" ]]; then
-    confirm n prompt_overwrite_config "$path" || die err_foreign_config "$path"
+    [[ "$(tr -d '[:space:]' <"$path")" != "{}" && "$OPT_OVERWRITE_CONFIG" != "1" ]]; then
+    if [[ "$TB_INTERACTIVE" != "1" ]] || ! confirm n prompt_overwrite_config "$path"; then
+      die err_foreign_config "$path"
+    fi
   fi
 
   preflight_ports "$old_proc"

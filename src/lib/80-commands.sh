@@ -41,6 +41,7 @@ opt_reset() {
   OPT_ALLOW_PRIVATE=""
   OPT_CORE_VERSION=""
   OPT_NO_FIREWALL=0
+  OPT_OVERWRITE_CONFIG=0
   OPT_FORMAT=""
   OPT_QR=0
   OPT_PURGE=0
@@ -99,6 +100,7 @@ parse_args() {
       --allow-private) OPT_ALLOW_PRIVATE=1 ;;
       --no-allow-private) OPT_ALLOW_PRIVATE=0 ;;
       --no-firewall) OPT_NO_FIREWALL=1 ;;
+      --overwrite-config) OPT_OVERWRITE_CONFIG=1 ;;
       --qr) OPT_QR=1 ;;
       --purge) OPT_PURGE=1 ;;
       *) die err_unknown_arg "$arg" ;;
@@ -585,13 +587,17 @@ cmd_install() {
     old_proc="$(core_fn "$prev_core" process)"
   fi
 
-  # A core that was installed by someone else may carry a configuration
-  # worth keeping: ask before replacing it. (A backup is made either way.)
+  # A core that was installed by someone else (a panel, a hand-made node)
+  # may carry a configuration that is in use. Replacing it takes an explicit
+  # answer at the prompt or --overwrite-config; --yes alone is not enough.
+  # (A backup is made either way.)
   core_call is_installed && core_preinstalled=1
   path="$(core_call config_path)"
   if [[ "$core_preinstalled" == "1" && "$prev_core" != "$CFG_CORE" && -s "$path" ]] &&
-    [[ "$(tr -d '[:space:]' <"$path")" != "{}" ]]; then
-    confirm n prompt_overwrite_config "$path" || die err_foreign_config "$path"
+    [[ "$(tr -d '[:space:]' <"$path")" != "{}" && "$OPT_OVERWRITE_CONFIG" != "1" ]]; then
+    if [[ "$TB_INTERACTIVE" != "1" ]] || ! confirm n prompt_overwrite_config "$path"; then
+      die err_foreign_config "$path"
+    fi
   fi
 
   preflight_ports "$old_proc"

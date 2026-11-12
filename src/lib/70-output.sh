@@ -156,14 +156,16 @@ client_singbox_json() {
     }'
 }
 
-# Machine-readable description: the state plus the share links.
+# Machine-readable description: the state plus the share links. The REALITY
+# private key is left out: no client needs it, and this output tends to get
+# pasted into issues and chats.
 show_json() {
   local vless_uri="" ss_uri=""
   [[ "$OUT_VLESS" == "1" ]] && vless_uri="$(vless_link)"
   [[ "$OUT_SS" == "1" ]] && ss_uri="$(ss_link)"
   state_json | jq --arg vless "$vless_uri" --arg ss "$ss_uri" \
     --arg version "$TB_VERSION" '
-    del(.firewall, .schema)
+    del(.firewall, .schema, .vless.private_key)
     + {toastbox_version: $version}
     + {links: ({} + (if $vless != "" then {vless: $vless} else {} end)
                   + (if $ss != "" then {ss: $ss} else {} end))}'

@@ -101,6 +101,10 @@ q() { jq -r "$1" <<<"$output"; }
   [ "$(q '.links.vless')" = "$(vless_link)" ]
   [ "$(q '.links.ss')" = "$(ss_link)" ]
   [ "$(q '.toastbox_version')" = "$TB_VERSION" ]
+  # The public key is what clients need; the private key never leaves.
+  [ "$(q '.vless.public_key')" = "$CFG_REALITY_PUBLIC_KEY" ]
+  [ "$(q '.vless | has("private_key")')" = "false" ]
+  [[ "$output" != *"$CFG_REALITY_PRIVATE_KEY"* ]]
 }
 
 @test "select_output_protocols honours --protocols" {

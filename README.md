@@ -72,6 +72,7 @@ sudo bash toastbox.sh install -y \
 | `--allow-private` | 关闭 | 允许转发到私有 / 回环地址 |
 | `--core-version VERSION` | 最新版 | 安装指定版本的内核 |
 | `--no-firewall` | | 不修改 ufw |
+| `--overwrite-config` | | 替换并非由 ToastBox 生成的现有配置；仅有 `-y` 不会替换 |
 
 通用选项：`-y` / `--yes`（不提示）、`--lang en|zh`、`--help`。
 
@@ -83,7 +84,7 @@ sudo toastbox show --qr                     # 同时显示二维码
 sudo toastbox show --format links           # 只输出分享链接
 sudo toastbox show --format xray            # 完整的 Xray 客户端配置
 sudo toastbox show --format sing-box        # 完整的 sing-box 客户端配置
-sudo toastbox show --format json            # 机器可读
+sudo toastbox show --format json            # 机器可读（不含 REALITY 私钥）
 sudo toastbox show --format xray --protocols ss   # 只输出某个协议
 ```
 
@@ -109,7 +110,7 @@ Shadowsocks 2022 还要求两端时钟基本一致，系统未开启时间同步
 
 ### 默认的安全设置
 
-- 节点拒绝转发到回环、内网、链路本地（云厂商的元数据接口在这里）等地址。确实需要访问服务器内网时用 `--allow-private`。
+- 节点拒绝转发到以 IP 形式给出的回环、内网、链路本地（云厂商的元数据接口在这里）地址。这不是完整的隔离：一个解析到内网地址的域名不会被拦截。确实需要访问服务器内网时用 `--allow-private`。
 - Xray 的访问日志默认关闭；sing-box 的日志级别为 `warn`。
 - `--block-bt` 依赖流量嗅探。开启后，由服务端先发数据的协议（如 SSH、SMTP）在建立连接时会多等待一小段时间。
 - 配置文件和状态文件含有私钥：Xray 配置为 `root:xray 0640`，sing-box 配置和 `state.json` 为 `root 0600`。
