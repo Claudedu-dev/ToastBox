@@ -161,3 +161,7 @@ make check   # lint + test
 | `tests/e2e/run.sh` | 真机端到端测试，由 CI 在 Ubuntu 22.04 / 24.04 上对两种内核运行 |
 
 端到端测试会真实安装并清除内核，**只应在一次性的机器上运行**。CI 目前不覆盖 Debian 和 arm64。
+
+## 许可证
+
+[MIT](LICENSE) © ToastSail

@@ -146,3 +146,7 @@ make check   # lint + test
 ```
 
 `tests/unit/` holds the unit tests and full command flows against mocks. `tests/e2e/run.sh` is the real thing: CI runs it for both cores on Ubuntu 22.04 and 24.04. It installs and purges the core, so **only run it on a disposable machine**. CI does not cover Debian or arm64 yet.
+
+## License
+
+[MIT](LICENSE) © ToastSail
