@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Stand-in for the xray binary in unit tests.
+key() { head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n'; }
+case "${1:-}" in
+  version) echo "Xray ${FAKE_XRAY_VERSION:-26.11.9} (Xray, Penetrates Everything.) c456141 (go1.27 linux/amd64)" ;;
+  uuid) cat /proc/sys/kernel/random/uuid ;;
+  x25519)
+    echo "PrivateKey: $(key)"
+    echo "Password (PublicKey): $(key)"
+    echo "Hash32: $(key)"
+    ;;
+  run)
+    # run -test -c FILE
+    [[ -z "${FAKE_CORE_REJECT:-}" ]] || {
+      echo "Failed to start: invalid config" >&2
+      exit 23
+    }
+    jq -e . "$4" >/dev/null && echo "Configuration OK."
+    ;;
+  *) exit 2 ;;
+esac

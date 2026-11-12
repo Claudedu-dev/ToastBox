@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Stand-in for the sing-box binary in unit tests.
+key() { head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n'; }
+case "${1:-} ${2:-}" in
+  "version "*) echo "sing-box version ${FAKE_SINGBOX_VERSION:-1.14.4}" ;;
+  "generate uuid") cat /proc/sys/kernel/random/uuid ;;
+  "generate reality-keypair")
+    echo "PrivateKey: $(key)"
+    echo "PublicKey: $(key)"
+    ;;
+  "check -c")
+    [[ -z "${FAKE_CORE_REJECT:-}" ]] || {
+      echo "FATAL decode config" >&2
+      exit 1
+    }
+    jq -e . "$3" >/dev/null
+    ;;
+  *) exit 2 ;;
+esac
