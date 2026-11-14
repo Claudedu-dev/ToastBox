@@ -99,6 +99,8 @@ TB_MSG_EN[err_protocols]='Invalid protocol list "%s". Use vless, ss or vless,ss.
 TB_MSG_EN[err_protocol_disabled]='Protocol "%s" is not enabled on this node.'
 TB_MSG_EN[err_format]='Unknown format "%s". Use text, links, json, xray or sing-box.'
 TB_MSG_EN[err_aborted]='Aborted. Nothing was changed. (Use --yes to confirm without a prompt.)'
+TB_MSG_EN[err_sockopt_core]='Custom TCP sockopt is supported only by Xray, not %s. Use install --reset-sockopt to clear it before switching cores.'
+TB_MSG_EN[err_sockopt_command]='TCP sockopt options are only accepted with install; update and rotate reuse the saved settings.'
 
 TB_MSG_EN[prompt_core]='Core: 1) xray  2) sing-box'
 TB_MSG_EN[prompt_protocols]='Protocols: 1) both  2) VLESS-REALITY-Vision only  3) Shadowsocks 2022 only'
@@ -170,6 +172,7 @@ TB_MSG_EN[word_stopped]='not running'
 TB_MSG_EN[label_core]='Core'
 TB_MSG_EN[label_server]='Server address'
 TB_MSG_EN[label_config]='Server config'
+TB_MSG_EN[label_sockopt]='TCP sockopt (Xray listeners)'
 TB_MSG_EN[label_port]='Port'
 TB_MSG_EN[label_uuid]='UUID'
 TB_MSG_EN[label_flow]='Flow'
@@ -222,6 +225,11 @@ Options for install:
                               2022-blake3-aes-256-gcm or
                               2022-blake3-chacha20-poly1305
   --ss-network both|tcp|udp   Shadowsocks listen network (default: both)
+  --tcp-keepalive-idle SEC    Xray TCP keepalive idle (1..32767 seconds)
+  --tcp-keepalive-interval SEC  Xray TCP keepalive interval (1..32767 seconds)
+  --tcp-user-timeout MS       Xray TCP user timeout (1..2147483647 milliseconds)
+                              0 clears one override; unset values keep defaults
+  --reset-sockopt             Clear all saved TCP overrides before applying flags
   --block-bt                  Reject BitTorrent traffic (--no-block-bt to undo)
   --allow-private             Allow relaying to private / loopback addresses
                               (--no-allow-private to undo)
@@ -276,6 +284,8 @@ TB_MSG_ZH[err_protocols]='协议列表“%s”无效，可选 vless、ss 或 vle
 TB_MSG_ZH[err_protocol_disabled]='此节点未启用协议“%s”。'
 TB_MSG_ZH[err_format]='未知格式“%s”，可选 text、links、json、xray 或 sing-box。'
 TB_MSG_ZH[err_aborted]='已取消，未做任何更改。（使用 --yes 可跳过确认。）'
+TB_MSG_ZH[err_sockopt_core]='自定义 TCP sockopt 仅支持 Xray，不支持 %s。切换内核前请用 install --reset-sockopt 清除。'
+TB_MSG_ZH[err_sockopt_command]='TCP sockopt 选项仅可用于 install；update 和 rotate 会复用已保存的设置。'
 
 TB_MSG_ZH[prompt_core]='内核：1) xray  2) sing-box'
 TB_MSG_ZH[prompt_protocols]='协议：1) 两者都部署  2) 仅 VLESS-REALITY-Vision  3) 仅 Shadowsocks 2022'
@@ -346,6 +356,7 @@ TB_MSG_ZH[word_stopped]='未运行'
 TB_MSG_ZH[label_core]='内核'
 TB_MSG_ZH[label_server]='服务器地址'
 TB_MSG_ZH[label_config]='服务端配置'
+TB_MSG_ZH[label_sockopt]='TCP sockopt（Xray 入站）'
 TB_MSG_ZH[label_port]='端口'
 TB_MSG_ZH[label_uuid]='UUID'
 TB_MSG_ZH[label_flow]='流控（flow）'
@@ -398,6 +409,11 @@ install 的选项：
                               2022-blake3-aes-256-gcm 或
                               2022-blake3-chacha20-poly1305
   --ss-network both|tcp|udp   Shadowsocks 监听的网络（默认：both）
+  --tcp-keepalive-idle SEC    Xray TCP 保活空闲时间（1..32767 秒）
+  --tcp-keepalive-interval SEC  Xray TCP 保活探测间隔（1..32767 秒）
+  --tcp-user-timeout MS       Xray TCP 用户超时（1..2147483647 毫秒）
+                              0 清除单项覆盖；未设置时沿用默认值
+  --reset-sockopt             清除已保存的 TCP 覆盖，再应用本次显式参数
   --block-bt                  拒绝 BitTorrent 流量（--no-block-bt 取消）
   --allow-private             允许转发到私有 / 回环地址
                               （--no-allow-private 取消）

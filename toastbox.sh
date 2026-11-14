@@ -251,6 +251,8 @@ TB_MSG_EN[err_protocols]='Invalid protocol list "%s". Use vless, ss or vless,ss.
 TB_MSG_EN[err_protocol_disabled]='Protocol "%s" is not enabled on this node.'
 TB_MSG_EN[err_format]='Unknown format "%s". Use text, links, json, xray or sing-box.'
 TB_MSG_EN[err_aborted]='Aborted. Nothing was changed. (Use --yes to confirm without a prompt.)'
+TB_MSG_EN[err_sockopt_core]='Custom TCP sockopt is supported only by Xray, not %s. Use install --reset-sockopt to clear it before switching cores.'
+TB_MSG_EN[err_sockopt_command]='TCP sockopt options are only accepted with install; update and rotate reuse the saved settings.'
 
 TB_MSG_EN[prompt_core]='Core: 1) xray  2) sing-box'
 TB_MSG_EN[prompt_protocols]='Protocols: 1) both  2) VLESS-REALITY-Vision only  3) Shadowsocks 2022 only'
@@ -322,6 +324,7 @@ TB_MSG_EN[word_stopped]='not running'
 TB_MSG_EN[label_core]='Core'
 TB_MSG_EN[label_server]='Server address'
 TB_MSG_EN[label_config]='Server config'
+TB_MSG_EN[label_sockopt]='TCP sockopt (Xray listeners)'
 TB_MSG_EN[label_port]='Port'
 TB_MSG_EN[label_uuid]='UUID'
 TB_MSG_EN[label_flow]='Flow'
@@ -374,6 +377,11 @@ Options for install:
                               2022-blake3-aes-256-gcm or
                               2022-blake3-chacha20-poly1305
   --ss-network both|tcp|udp   Shadowsocks listen network (default: both)
+  --tcp-keepalive-idle SEC    Xray TCP keepalive idle (1..32767 seconds)
+  --tcp-keepalive-interval SEC  Xray TCP keepalive interval (1..32767 seconds)
+  --tcp-user-timeout MS       Xray TCP user timeout (1..2147483647 milliseconds)
+                              0 clears one override; unset values keep defaults
+  --reset-sockopt             Clear all saved TCP overrides before applying flags
   --block-bt                  Reject BitTorrent traffic (--no-block-bt to undo)
   --allow-private             Allow relaying to private / loopback addresses
                               (--no-allow-private to undo)
@@ -428,6 +436,8 @@ TB_MSG_ZH[err_protocols]='协议列表“%s”无效，可选 vless、ss 或 vle
 TB_MSG_ZH[err_protocol_disabled]='此节点未启用协议“%s”。'
 TB_MSG_ZH[err_format]='未知格式“%s”，可选 text、links、json、xray 或 sing-box。'
 TB_MSG_ZH[err_aborted]='已取消，未做任何更改。（使用 --yes 可跳过确认。）'
+TB_MSG_ZH[err_sockopt_core]='自定义 TCP sockopt 仅支持 Xray，不支持 %s。切换内核前请用 install --reset-sockopt 清除。'
+TB_MSG_ZH[err_sockopt_command]='TCP sockopt 选项仅可用于 install；update 和 rotate 会复用已保存的设置。'
 
 TB_MSG_ZH[prompt_core]='内核：1) xray  2) sing-box'
 TB_MSG_ZH[prompt_protocols]='协议：1) 两者都部署  2) 仅 VLESS-REALITY-Vision  3) 仅 Shadowsocks 2022'
@@ -498,6 +508,7 @@ TB_MSG_ZH[word_stopped]='未运行'
 TB_MSG_ZH[label_core]='内核'
 TB_MSG_ZH[label_server]='服务器地址'
 TB_MSG_ZH[label_config]='服务端配置'
+TB_MSG_ZH[label_sockopt]='TCP sockopt（Xray 入站）'
 TB_MSG_ZH[label_port]='端口'
 TB_MSG_ZH[label_uuid]='UUID'
 TB_MSG_ZH[label_flow]='流控（flow）'
@@ -550,6 +561,11 @@ install 的选项：
                               2022-blake3-aes-256-gcm 或
                               2022-blake3-chacha20-poly1305
   --ss-network both|tcp|udp   Shadowsocks 监听的网络（默认：both）
+  --tcp-keepalive-idle SEC    Xray TCP 保活空闲时间（1..32767 秒）
+  --tcp-keepalive-interval SEC  Xray TCP 保活探测间隔（1..32767 秒）
+  --tcp-user-timeout MS       Xray TCP 用户超时（1..2147483647 毫秒）
+                              0 清除单项覆盖；未设置时沿用默认值
+  --reset-sockopt             清除已保存的 TCP 覆盖，再应用本次显式参数
   --block-bt                  拒绝 BitTorrent 流量（--no-block-bt 取消）
   --allow-private             允许转发到私有 / 回环地址
                               （--no-allow-private 取消）
@@ -1050,6 +1066,8 @@ cfg_reset() {
   CFG_LISTEN=""
   CFG_BLOCK_BT=0
   CFG_ALLOW_PRIVATE=0
+  # Optional Xray TCP listener settings. Empty means core/system defaults.
+  CFG_SOCKOPT='{}'
 
   CFG_VLESS=0
   CFG_VLESS_PORT=""
@@ -1080,6 +1098,7 @@ state_json() {
     --arg listen "$CFG_LISTEN" \
     --arg block_bt "$CFG_BLOCK_BT" \
     --arg allow_private "$CFG_ALLOW_PRIVATE" \
+    --argjson sockopt "$CFG_SOCKOPT" \
     --arg vless "$CFG_VLESS" \
     --arg vless_port "$CFG_VLESS_PORT" \
     --arg vless_uuid "$CFG_VLESS_UUID" \
@@ -1103,6 +1122,7 @@ state_json() {
       listen: $listen,
       block_bt: ($block_bt == "1"),
       allow_private: ($allow_private == "1"),
+      sockopt: $sockopt,
       vless: {
         enabled: ($vless == "1"),
         port: ($vless_port | port),
@@ -1133,11 +1153,36 @@ state_save() {
   mv -f "$tmp" "$TB_STATE_FILE"
 }
 
+# Only these Linux TCP options are supported. Values are JSON integers;
+# zero is represented by an absent key, not an explicit socket override.
+sockopt_valid() {
+  jq -e '
+    type == "object" and all(to_entries[];
+      (.key == "tcpKeepAliveIdle" or .key == "tcpKeepAliveInterval" or .key == "tcpUserTimeout")
+      and (.value | type == "number")
+      and (.value == (.value | floor)) and .value > 0
+      and .value <= (if .key == "tcpUserTimeout" then 2147483647 else 32767 end)
+    )' <<<"$1" >/dev/null 2>&1
+}
+
+check_sockopt_support() {
+  if [[ "$1" != "xray" && "$CFG_SOCKOPT" != '{}' ]]; then
+    die err_sockopt_core "$1"
+  fi
+}
+
 # Loads state.json into CFG_*. Returns 1 when there is no state yet.
 state_load() {
-  local assignments
+  local assignments sockopt
   TB_HAS_STATE=0
   [[ -f "$TB_STATE_FILE" ]] || return 1
+
+  # Additive schema-1 field: older nodes have no custom sockopt. Reject
+  # malformed options before any command can rewrite their configuration.
+  if ! sockopt="$(jq -c 'if .sockopt == null then {} else .sockopt end' "$TB_STATE_FILE" 2>/dev/null)" ||
+    ! sockopt_valid "$sockopt"; then
+    die err_state_corrupt "$TB_STATE_FILE"
+  fi
 
   # @sh quotes every value for the shell, so eval only ever sees literals.
   assignments="$(jq -r '
@@ -1167,6 +1212,7 @@ state_load() {
   ' "$TB_STATE_FILE" 2>/dev/null)" || die err_state_corrupt "$TB_STATE_FILE"
 
   eval "$assignments"
+  CFG_SOCKOPT="$sockopt"
   TB_HAS_STATE=1
 }
 
@@ -1394,6 +1440,7 @@ xray_render() {
     --arg listen "$CFG_LISTEN" \
     --arg block_bt "$CFG_BLOCK_BT" \
     --arg allow_private "$CFG_ALLOW_PRIVATE" \
+    --argjson sockopt "$CFG_SOCKOPT" \
     --arg vless "$CFG_VLESS" \
     --arg vless_port "$CFG_VLESS_PORT" \
     --arg uuid "$CFG_VLESS_UUID" \
@@ -1427,7 +1474,7 @@ xray_render() {
               users: [{id: $uuid, flow: "xtls-rprx-vision"}],
               decryption: "none"
             },
-            streamSettings: {
+            streamSettings: ({
               method: "raw",
               security: "reality",
               realitySettings: {
@@ -1436,7 +1483,7 @@ xray_render() {
                 privateKey: $private_key,
                 shortIds: [$short_id]
               }
-            }
+            } + (if $sockopt == {} then {} else {sockopt: $sockopt} end))
           } | with_listen | with_sniffing
         else empty end),
         (if $ss == "1" then
@@ -1449,7 +1496,11 @@ xray_render() {
               method: $ss_method,
               password: $ss_password
             }
-          } | with_listen | with_sniffing
+          }
+          # Socket overrides affect the TCP listener only, never UDP.
+          + (if $sockopt != {} and $ss_network != "udp"
+             then {streamSettings: {sockopt: $sockopt}} else {} end)
+          | with_listen | with_sniffing
         else empty end)
       ],
       outbounds: [
@@ -1560,6 +1611,9 @@ singbox_extra_configs() {
 
 singbox_render() {
   local listen="$CFG_LISTEN"
+  # Xray sockopt names are not sing-box listen fields; never drop them
+  # silently when switching cores or rendering directly.
+  check_sockopt_support sing-box
   if [[ -z "$listen" ]]; then
     # `listen` is required. "::" is dual-stack, but fails to bind on hosts
     # where IPv6 is disabled.
@@ -1842,6 +1896,7 @@ show_text() {
   kv label_core "$CFG_CORE ${version:-?} ($status)"
   kv label_server "$CFG_SERVER_ADDR"
   kv label_config "$(core_call config_path)"
+  if [[ "$CFG_SOCKOPT" != '{}' ]]; then kv label_sockopt "$CFG_SOCKOPT"; fi
 
   if [[ "$OUT_VLESS" == "1" ]]; then
     link="$(vless_link)"
@@ -1947,6 +2002,10 @@ opt_reset() {
   OPT_SS_NETWORK=""
   OPT_BLOCK_BT=""
   OPT_ALLOW_PRIVATE=""
+  OPT_TCP_KEEPALIVE_IDLE=""
+  OPT_TCP_KEEPALIVE_INTERVAL=""
+  OPT_TCP_USER_TIMEOUT=""
+  OPT_RESET_SOCKOPT=0
   OPT_CORE_VERSION=""
   OPT_NO_FIREWALL=0
   OPT_OVERWRITE_CONFIG=0
@@ -1982,6 +2041,9 @@ parse_args() {
       --ss-port) var=OPT_SS_PORT ;;
       --ss-method) var=OPT_SS_METHOD ;;
       --ss-network) var=OPT_SS_NETWORK ;;
+      --tcp-keepalive-idle) var=OPT_TCP_KEEPALIVE_IDLE ;;
+      --tcp-keepalive-interval) var=OPT_TCP_KEEPALIVE_INTERVAL ;;
+      --tcp-user-timeout) var=OPT_TCP_USER_TIMEOUT ;;
       --core-version) var=OPT_CORE_VERSION ;;
       --format) var=OPT_FORMAT ;;
       # Already handled by tb_init_lang; parsed here only to consume it.
@@ -1989,6 +2051,9 @@ parse_args() {
     esac
     if [[ -n "$var" ]]; then
       (($# > 0)) || die err_missing_value "$arg"
+      if [[ "$var" == OPT_TCP_* && -z "$1" ]]; then
+        die err_invalid_option "$arg" "$1"
+      fi
       printf -v "$var" '%s' "$1"
       shift
       continue
@@ -2007,6 +2072,7 @@ parse_args() {
       --no-block-bt) OPT_BLOCK_BT=0 ;;
       --allow-private) OPT_ALLOW_PRIVATE=1 ;;
       --no-allow-private) OPT_ALLOW_PRIVATE=0 ;;
+      --reset-sockopt) OPT_RESET_SOCKOPT=1 ;;
       --no-firewall) OPT_NO_FIREWALL=1 ;;
       --overwrite-config) OPT_OVERWRITE_CONFIG=1 ;;
       --qr) OPT_QR=1 ;;
@@ -2061,6 +2127,18 @@ norm_protocols() {
 norm_port() {
   valid_port "$1" && printf '%d' "$((10#$1))"
 }
+
+# Bound the string length before arithmetic to avoid overflow. Keepalive
+# seconds are limited by Linux; TCP_USER_TIMEOUT must fit Xray's int32.
+norm_socket_int() {
+  local value="$1" max="$2"
+  [[ "$value" =~ ^[0-9]+$ && ${#value} -le 10 ]] || return 1
+  value="$((10#$value))"
+  ((value <= max)) && printf '%d' "$value"
+}
+
+norm_tcp_keepalive() { norm_socket_int "$1" 32767; }
+norm_tcp_user_timeout() { norm_socket_int "$1" 2147483647; }
 
 norm_domain() {
   valid_domain "$1" && printf '%s' "${1,,}"
@@ -2137,6 +2215,12 @@ validate_options() {
   normalize_opt OPT_SS_PORT norm_port --ss-port
   normalize_opt OPT_SS_METHOD norm_ss_method --ss-method
   normalize_opt OPT_SS_NETWORK norm_ss_network --ss-network
+  normalize_opt OPT_TCP_KEEPALIVE_IDLE norm_tcp_keepalive --tcp-keepalive-idle
+  normalize_opt OPT_TCP_KEEPALIVE_INTERVAL norm_tcp_keepalive --tcp-keepalive-interval
+  normalize_opt OPT_TCP_USER_TIMEOUT norm_tcp_user_timeout --tcp-user-timeout
+  if [[ -n "$OPT_TCP_KEEPALIVE_IDLE$OPT_TCP_KEEPALIVE_INTERVAL$OPT_TCP_USER_TIMEOUT" || "$OPT_RESET_SOCKOPT" == "1" ]]; then
+    [[ "$OPT_COMMAND" == "install" ]] || die err_sockopt_command
+  fi
   normalize_opt OPT_CORE_VERSION norm_version --core-version
   normalize_opt OPT_FORMAT norm_format --format
 }
@@ -2291,8 +2375,29 @@ resolve_ss() {
   fi
 }
 
+resolve_sockopt() {
+  local key var value
+  # Reset first, then apply explicitly supplied overrides, regardless of
+  # argument order. Unspecified fields otherwise keep their saved value.
+  [[ "$OPT_RESET_SOCKOPT" == "1" ]] && CFG_SOCKOPT='{}'
+  for key in tcpKeepAliveIdle tcpKeepAliveInterval tcpUserTimeout; do
+    case "$key" in
+      tcpKeepAliveIdle) var=OPT_TCP_KEEPALIVE_IDLE ;;
+      tcpKeepAliveInterval) var=OPT_TCP_KEEPALIVE_INTERVAL ;;
+      tcpUserTimeout) var=OPT_TCP_USER_TIMEOUT ;;
+    esac
+    value="${!var}"
+    [[ -n "$value" ]] || continue
+    CFG_SOCKOPT="$(jq -c --arg key "$key" --argjson value "$value" '
+      if $value == 0 then del(.[$key]) else .[$key] = $value end
+    ' <<<"$CFG_SOCKOPT")" || die err_render
+  done
+  check_sockopt_support "$CFG_CORE"
+}
+
 resolve_params() {
   resolve_core
+  resolve_sockopt
   resolve_protocols
   resolve_server_addr
 
@@ -2316,6 +2421,9 @@ print_plan() {
   printf '\n%s\n' "$(msg plan_title)" >&2
   printf '  %s: %s\n' "$(msg label_core)" "$CFG_CORE" >&2
   printf '  %s: %s\n' "$(msg label_server)" "$CFG_SERVER_ADDR" >&2
+  if [[ "$CFG_SOCKOPT" != '{}' ]]; then
+    printf '  %s: %s\n' "$(msg label_sockopt)" "$CFG_SOCKOPT" >&2
+  fi
   if [[ "$CFG_VLESS" == "1" ]]; then
     printf '  VLESS-REALITY-Vision: %s/tcp, SNI %s, %s %s\n' \
       "$CFG_VLESS_PORT" "$CFG_REALITY_SNI" "$(msg label_target)" "$CFG_REALITY_TARGET" >&2
@@ -2359,6 +2467,7 @@ preflight_ports() {
 # recent enough for the configuration we write.
 ensure_core() {
   local force="${1:-0}" version min
+  check_sockopt_support "$CFG_CORE"
   if [[ "$force" == "1" || -n "$OPT_CORE_VERSION" ]] || ! core_call is_installed; then
     log_info info_installing_core "$CFG_CORE"
     core_call install "$OPT_CORE_VERSION" || die err_core_install "$CFG_CORE"
@@ -2388,6 +2497,7 @@ apply_config() {
   local new="$TB_TMP/config.json" path svc backup="" output was_active=0
   path="$(core_call config_path)"
   svc="$(core_call service)"
+  check_sockopt_support "$CFG_CORE"
 
   core_call render >"$new" || die err_render
   if ! output="$(core_call validate "$new" 2>&1)"; then

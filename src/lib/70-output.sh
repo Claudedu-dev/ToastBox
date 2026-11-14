@@ -206,6 +206,7 @@ show_text() {
   kv label_core "$CFG_CORE ${version:-?} ($status)"
   kv label_server "$CFG_SERVER_ADDR"
   kv label_config "$(core_call config_path)"
+  if [[ "$CFG_SOCKOPT" != '{}' ]]; then kv label_sockopt "$CFG_SOCKOPT"; fi
 
   if [[ "$OUT_VLESS" == "1" ]]; then
     link="$(vless_link)"

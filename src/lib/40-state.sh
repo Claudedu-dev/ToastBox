@@ -17,6 +17,8 @@ cfg_reset() {
   CFG_LISTEN=""
   CFG_BLOCK_BT=0
   CFG_ALLOW_PRIVATE=0
+  # Optional Xray TCP listener settings. Empty means core/system defaults.
+  CFG_SOCKOPT='{}'
 
   CFG_VLESS=0
   CFG_VLESS_PORT=""
@@ -47,6 +49,7 @@ state_json() {
     --arg listen "$CFG_LISTEN" \
     --arg block_bt "$CFG_BLOCK_BT" \
     --arg allow_private "$CFG_ALLOW_PRIVATE" \
+    --argjson sockopt "$CFG_SOCKOPT" \
     --arg vless "$CFG_VLESS" \
     --arg vless_port "$CFG_VLESS_PORT" \
     --arg vless_uuid "$CFG_VLESS_UUID" \
@@ -70,6 +73,7 @@ state_json() {
       listen: $listen,
       block_bt: ($block_bt == "1"),
       allow_private: ($allow_private == "1"),
+      sockopt: $sockopt,
       vless: {
         enabled: ($vless == "1"),
         port: ($vless_port | port),
@@ -100,11 +104,36 @@ state_save() {
   mv -f "$tmp" "$TB_STATE_FILE"
 }
 
+# Only these Linux TCP options are supported. Values are JSON integers;
+# zero is represented by an absent key, not an explicit socket override.
+sockopt_valid() {
+  jq -e '
+    type == "object" and all(to_entries[];
+      (.key == "tcpKeepAliveIdle" or .key == "tcpKeepAliveInterval" or .key == "tcpUserTimeout")
+      and (.value | type == "number")
+      and (.value == (.value | floor)) and .value > 0
+      and .value <= (if .key == "tcpUserTimeout" then 2147483647 else 32767 end)
+    )' <<<"$1" >/dev/null 2>&1
+}
+
+check_sockopt_support() {
+  if [[ "$1" != "xray" && "$CFG_SOCKOPT" != '{}' ]]; then
+    die err_sockopt_core "$1"
+  fi
+}
+
 # Loads state.json into CFG_*. Returns 1 when there is no state yet.
 state_load() {
-  local assignments
+  local assignments sockopt
   TB_HAS_STATE=0
   [[ -f "$TB_STATE_FILE" ]] || return 1
+
+  # Additive schema-1 field: older nodes have no custom sockopt. Reject
+  # malformed options before any command can rewrite their configuration.
+  if ! sockopt="$(jq -c 'if .sockopt == null then {} else .sockopt end' "$TB_STATE_FILE" 2>/dev/null)" ||
+    ! sockopt_valid "$sockopt"; then
+    die err_state_corrupt "$TB_STATE_FILE"
+  fi
 
   # @sh quotes every value for the shell, so eval only ever sees literals.
   assignments="$(jq -r '
@@ -134,6 +163,7 @@ state_load() {
   ' "$TB_STATE_FILE" 2>/dev/null)" || die err_state_corrupt "$TB_STATE_FILE"
 
   eval "$assignments"
+  CFG_SOCKOPT="$sockopt"
   TB_HAS_STATE=1
 }
 
