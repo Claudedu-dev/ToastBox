@@ -39,6 +39,10 @@ opt_reset() {
   OPT_SS_NETWORK=""
   OPT_BLOCK_BT=""
   OPT_ALLOW_PRIVATE=""
+  OPT_TCP_KEEPALIVE_IDLE=""
+  OPT_TCP_KEEPALIVE_INTERVAL=""
+  OPT_TCP_USER_TIMEOUT=""
+  OPT_RESET_SOCKOPT=0
   OPT_CORE_VERSION=""
   OPT_NO_FIREWALL=0
   OPT_OVERWRITE_CONFIG=0
@@ -74,6 +78,9 @@ parse_args() {
       --ss-port) var=OPT_SS_PORT ;;
       --ss-method) var=OPT_SS_METHOD ;;
       --ss-network) var=OPT_SS_NETWORK ;;
+      --tcp-keepalive-idle) var=OPT_TCP_KEEPALIVE_IDLE ;;
+      --tcp-keepalive-interval) var=OPT_TCP_KEEPALIVE_INTERVAL ;;
+      --tcp-user-timeout) var=OPT_TCP_USER_TIMEOUT ;;
       --core-version) var=OPT_CORE_VERSION ;;
       --format) var=OPT_FORMAT ;;
       # Already handled by tb_init_lang; parsed here only to consume it.
@@ -81,6 +88,9 @@ parse_args() {
     esac
     if [[ -n "$var" ]]; then
       (($# > 0)) || die err_missing_value "$arg"
+      if [[ "$var" == OPT_TCP_* && -z "$1" ]]; then
+        die err_invalid_option "$arg" "$1"
+      fi
       printf -v "$var" '%s' "$1"
       shift
       continue
@@ -99,6 +109,7 @@ parse_args() {
       --no-block-bt) OPT_BLOCK_BT=0 ;;
       --allow-private) OPT_ALLOW_PRIVATE=1 ;;
       --no-allow-private) OPT_ALLOW_PRIVATE=0 ;;
+      --reset-sockopt) OPT_RESET_SOCKOPT=1 ;;
       --no-firewall) OPT_NO_FIREWALL=1 ;;
       --overwrite-config) OPT_OVERWRITE_CONFIG=1 ;;
       --qr) OPT_QR=1 ;;
@@ -153,6 +164,18 @@ norm_protocols() {
 norm_port() {
   valid_port "$1" && printf '%d' "$((10#$1))"
 }
+
+# Bound the string length before arithmetic to avoid overflow. Keepalive
+# seconds are limited by Linux; TCP_USER_TIMEOUT must fit Xray's int32.
+norm_socket_int() {
+  local value="$1" max="$2"
+  [[ "$value" =~ ^[0-9]+$ && ${#value} -le 10 ]] || return 1
+  value="$((10#$value))"
+  ((value <= max)) && printf '%d' "$value"
+}
+
+norm_tcp_keepalive() { norm_socket_int "$1" 32767; }
+norm_tcp_user_timeout() { norm_socket_int "$1" 2147483647; }
 
 norm_domain() {
   valid_domain "$1" && printf '%s' "${1,,}"
@@ -229,6 +252,12 @@ validate_options() {
   normalize_opt OPT_SS_PORT norm_port --ss-port
   normalize_opt OPT_SS_METHOD norm_ss_method --ss-method
   normalize_opt OPT_SS_NETWORK norm_ss_network --ss-network
+  normalize_opt OPT_TCP_KEEPALIVE_IDLE norm_tcp_keepalive --tcp-keepalive-idle
+  normalize_opt OPT_TCP_KEEPALIVE_INTERVAL norm_tcp_keepalive --tcp-keepalive-interval
+  normalize_opt OPT_TCP_USER_TIMEOUT norm_tcp_user_timeout --tcp-user-timeout
+  if [[ -n "$OPT_TCP_KEEPALIVE_IDLE$OPT_TCP_KEEPALIVE_INTERVAL$OPT_TCP_USER_TIMEOUT" || "$OPT_RESET_SOCKOPT" == "1" ]]; then
+    [[ "$OPT_COMMAND" == "install" ]] || die err_sockopt_command
+  fi
   normalize_opt OPT_CORE_VERSION norm_version --core-version
   normalize_opt OPT_FORMAT norm_format --format
 }
@@ -383,8 +412,29 @@ resolve_ss() {
   fi
 }
 
+resolve_sockopt() {
+  local key var value
+  # Reset first, then apply explicitly supplied overrides, regardless of
+  # argument order. Unspecified fields otherwise keep their saved value.
+  [[ "$OPT_RESET_SOCKOPT" == "1" ]] && CFG_SOCKOPT='{}'
+  for key in tcpKeepAliveIdle tcpKeepAliveInterval tcpUserTimeout; do
+    case "$key" in
+      tcpKeepAliveIdle) var=OPT_TCP_KEEPALIVE_IDLE ;;
+      tcpKeepAliveInterval) var=OPT_TCP_KEEPALIVE_INTERVAL ;;
+      tcpUserTimeout) var=OPT_TCP_USER_TIMEOUT ;;
+    esac
+    value="${!var}"
+    [[ -n "$value" ]] || continue
+    CFG_SOCKOPT="$(jq -c --arg key "$key" --argjson value "$value" '
+      if $value == 0 then del(.[$key]) else .[$key] = $value end
+    ' <<<"$CFG_SOCKOPT")" || die err_render
+  done
+  check_sockopt_support "$CFG_CORE"
+}
+
 resolve_params() {
   resolve_core
+  resolve_sockopt
   resolve_protocols
   resolve_server_addr
 
@@ -408,6 +458,9 @@ print_plan() {
   printf '\n%s\n' "$(msg plan_title)" >&2
   printf '  %s: %s\n' "$(msg label_core)" "$CFG_CORE" >&2
   printf '  %s: %s\n' "$(msg label_server)" "$CFG_SERVER_ADDR" >&2
+  if [[ "$CFG_SOCKOPT" != '{}' ]]; then
+    printf '  %s: %s\n' "$(msg label_sockopt)" "$CFG_SOCKOPT" >&2
+  fi
   if [[ "$CFG_VLESS" == "1" ]]; then
     printf '  VLESS-REALITY-Vision: %s/tcp, SNI %s, %s %s\n' \
       "$CFG_VLESS_PORT" "$CFG_REALITY_SNI" "$(msg label_target)" "$CFG_REALITY_TARGET" >&2
@@ -451,6 +504,7 @@ preflight_ports() {
 # recent enough for the configuration we write.
 ensure_core() {
   local force="${1:-0}" version min
+  check_sockopt_support "$CFG_CORE"
   if [[ "$force" == "1" || -n "$OPT_CORE_VERSION" ]] || ! core_call is_installed; then
     log_info info_installing_core "$CFG_CORE"
     core_call install "$OPT_CORE_VERSION" || die err_core_install "$CFG_CORE"
@@ -480,6 +534,7 @@ apply_config() {
   local new="$TB_TMP/config.json" path svc backup="" output was_active=0
   path="$(core_call config_path)"
   svc="$(core_call service)"
+  check_sockopt_support "$CFG_CORE"
 
   core_call render >"$new" || die err_render
   if ! output="$(core_call validate "$new" 2>&1)"; then

@@ -68,6 +68,10 @@ sudo bash toastbox.sh install -y \
 | `--ss-port PORT` | random | Shadowsocks port |
 | `--ss-method METHOD` | `2022-blake3-aes-128-gcm` | Also `2022-blake3-aes-256-gcm`, `2022-blake3-chacha20-poly1305` |
 | `--ss-network both\|tcp\|udp` | `both` | Shadowsocks listen network |
+| `--tcp-keepalive-idle SEC` | no override | Xray TCP keepalive idle, 1–32767 seconds; `0` clears it |
+| `--tcp-keepalive-interval SEC` | no override | Xray TCP keepalive interval, 1–32767 seconds; `0` clears it |
+| `--tcp-user-timeout MS` | no override | Xray TCP user timeout, 1–2147483647 milliseconds; `0` clears it |
+| `--reset-sockopt` | | Clear saved TCP overrides before applying explicit flags |
 | `--block-bt` | off | Reject BitTorrent traffic |
 | `--allow-private` | off | Allow relaying to private / loopback addresses |
 | `--core-version VERSION` | latest | Install this core version |
@@ -114,6 +118,26 @@ Shadowsocks 2022 also needs both clocks to roughly agree. The script warns when 
 - Xray's access log is off; sing-box logs at `warn`.
 - `--block-bt` relies on sniffing. With it, protocols where the server speaks first (SSH, SMTP) wait a moment longer when a connection is set up.
 - Configuration and state hold private keys: the Xray configuration is `root:xray 0640`, the sing-box configuration and `state.json` are `root 0600`.
+
+### Persistent TCP socket options (Xray)
+
+These are optional settings, not a default tuning profile. To save a profile on an existing Xray node:
+
+```bash
+sudo toastbox install -y --no-firewall \
+  --tcp-keepalive-idle 120 \
+  --tcp-keepalive-interval 30 \
+  --tcp-user-timeout 120000
+```
+
+The options are stored in the `sockopt` object of `state.json` and replayed by later `install` runs (without these flags), `update` and `rotate`. Changing socket settings does not replace credentials; `rotate` still rotates them as before.
+
+- New nodes and old state files without `sockopt` get no overrides, keeping core / system defaults. Hand-edited server JSON is not imported automatically; enter those values once with these flags.
+- Only Xray TCP inbounds are affected: VLESS-REALITY and the TCP part of SS TCP or TCP+UDP. UDP-only SS gets no socket overrides. Outbounds, client configurations and host `sysctl` are unchanged.
+- Keepalive values are in seconds; user timeout is in milliseconds. `tcpUserTimeout` only takes effect on Linux. Negative, fractional, non-numeric and out-of-range values are rejected.
+- Changing one value preserves the others; `0` removes that override. `--reset-sockopt` clears everything before applying explicit values from the same command, regardless of argument order.
+- sing-box does not accept these Xray-specific settings. Switching cores with custom settings is refused; use `install --core sing-box --reset-sockopt` to explicitly clear them and switch.
+- These CLI options are accepted only with `install`; `update` / `rotate` reuse the saved settings. `show` reports saved values, not runtime socket measurements.
 
 ### Firewall
 

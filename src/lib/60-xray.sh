@@ -84,6 +84,7 @@ xray_render() {
     --arg listen "$CFG_LISTEN" \
     --arg block_bt "$CFG_BLOCK_BT" \
     --arg allow_private "$CFG_ALLOW_PRIVATE" \
+    --argjson sockopt "$CFG_SOCKOPT" \
     --arg vless "$CFG_VLESS" \
     --arg vless_port "$CFG_VLESS_PORT" \
     --arg uuid "$CFG_VLESS_UUID" \
@@ -126,7 +127,7 @@ xray_render() {
                 privateKey: $private_key,
                 shortIds: [$short_id]
               }
-            }
+            } + (if $sockopt == {} then {} else {sockopt: $sockopt} end)
           } | with_listen | with_sniffing
         else empty end),
         (if $ss == "1" then
@@ -139,7 +140,11 @@ xray_render() {
               method: $ss_method,
               password: $ss_password
             }
-          } | with_listen | with_sniffing
+          }
+          # Socket overrides affect the TCP listener only, never UDP.
+          + (if $sockopt != {} and $ss_network != "udp"
+             then {streamSettings: {sockopt: $sockopt}} else {} end)
+          | with_listen | with_sniffing
         else empty end)
       ],
       outbounds: [

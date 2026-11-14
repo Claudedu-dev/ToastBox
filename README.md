@@ -68,6 +68,10 @@ sudo bash toastbox.sh install -y \
 | `--ss-port PORT` | 随机 | Shadowsocks 端口 |
 | `--ss-method METHOD` | `2022-blake3-aes-128-gcm` | 另可选 `2022-blake3-aes-256-gcm`、`2022-blake3-chacha20-poly1305` |
 | `--ss-network both\|tcp\|udp` | `both` | Shadowsocks 监听的网络 |
+| `--tcp-keepalive-idle SEC` | 不覆盖 | Xray TCP 保活空闲时间，1–32767 秒；`0` 清除该项 |
+| `--tcp-keepalive-interval SEC` | 不覆盖 | Xray TCP 保活探测间隔，1–32767 秒；`0` 清除该项 |
+| `--tcp-user-timeout MS` | 不覆盖 | Xray TCP 用户超时，1–2147483647 毫秒；`0` 清除该项 |
+| `--reset-sockopt` | | 先清除已保存的 TCP 覆盖，再应用本次显式参数 |
 | `--block-bt` | 关闭 | 拒绝 BitTorrent 流量 |
 | `--allow-private` | 关闭 | 允许转发到私有 / 回环地址 |
 | `--core-version VERSION` | 最新版 | 安装指定版本的内核 |
@@ -114,6 +118,26 @@ Shadowsocks 2022 还要求两端时钟基本一致，系统未开启时间同步
 - Xray 的访问日志默认关闭；sing-box 的日志级别为 `warn`。
 - `--block-bt` 依赖流量嗅探。开启后，由服务端先发数据的协议（如 SSH、SMTP）在建立连接时会多等待一小段时间。
 - 配置文件和状态文件含有私钥：Xray 配置为 `root:xray 0640`，sing-box 配置和 `state.json` 为 `root 0600`。
+
+### TCP socket 参数持久化（Xray）
+
+以下是可选设置，不是默认调优方案。要为已有 Xray 节点保存一组参数，可执行：
+
+```bash
+sudo toastbox install -y --no-firewall \
+  --tcp-keepalive-idle 120 \
+  --tcp-keepalive-interval 30 \
+  --tcp-user-timeout 120000
+```
+
+参数保存到 `state.json` 的 `sockopt` 对象，之后 `install`（不再指定这些参数）、`update`、`rotate` 都会重放。修改设置本身不会更换凭据；`rotate` 仍会按原设计轮换凭据。
+
+- 新节点及不含 `sockopt` 的旧状态均不添加覆盖，沿用内核 / 系统默认值；不会自动导入手改服务端 JSON 中的值，需用上述选项录入一次。
+- 仅作用于 Xray 的 TCP 入站：VLESS-REALITY、SS TCP 或 TCP+UDP 中的 TCP 部分；SS 仅 UDP 时不生成该配置。不会修改出站、客户端配置或宿主机 `sysctl`。
+- KeepAlive 的单位为秒，UserTimeout 为毫秒；`tcpUserTimeout` 仅 Linux 生效。脚本会拒绝负数、小数、非数字及超出范围的值。
+- 只修改单项时，其他已保存项保持不变；将单项设为 `0` 可清除该覆盖。`--reset-sockopt` 清除全部，再应用同一命令中的显式参数，与参数顺序无关。
+- sing-box 不接受这组 Xray 专用设置。已有自定义项时切换内核会被拒绝；确认不再需要后，可使用 `install --core sing-box --reset-sockopt` 显式清除并切换。
+- 这组命令行选项仅用于 `install`；`update` / `rotate` 直接复用状态。`show` 会显示已保存的设置，不代表内核运行时探测。
 
 ### 防火墙
 
