@@ -118,7 +118,7 @@ xray_render() {
               users: [{id: $uuid, flow: "xtls-rprx-vision"}],
               decryption: "none"
             },
-            streamSettings: {
+            streamSettings: ({
               method: "raw",
               security: "reality",
               realitySettings: {
@@ -127,7 +127,7 @@ xray_render() {
                 privateKey: $private_key,
                 shortIds: [$short_id]
               }
-            } + (if $sockopt == {} then {} else {sockopt: $sockopt} end)
+            } + (if $sockopt == {} then {} else {sockopt: $sockopt} end))
           } | with_listen | with_sniffing
         else empty end),
         (if $ss == "1" then
