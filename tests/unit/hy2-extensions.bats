@@ -581,6 +581,71 @@ EOF
   [[ "$output" != *"unknown command"* && "$output" != *"Unknown option or argument"* ]]
 }
 
+@test "acme: successful issuance followed by validation failure cleans temporary 80" {
+  export MOCK_FW_BACKEND=ufw
+  run_toastbox install -y --core sing-box --protocols hy2 --server-addr 203.0.113.10
+  [ "$status" -eq 0 ]
+  local before_state before_config
+  before_state="$(<"$TB_STATE_FILE")"
+  before_config="$(<"$TB_SINGBOX_CONFIG")"
+  make_certbot_lineage "toastbox-hy2-hy2.example.com" "hy2.example.com"
+  : >"$MOCK_LOG"
+  export FAKE_CORE_REJECT=1
+  run bash -c '
+    export TOASTBOX_SOURCE_ONLY=1
+    source "$1/src/main.sh"
+    source "$1/tests/unit/mocks.bash"
+    acme_reusable_pair() { return 1; }
+    acme_check_dns() { :; }
+    acme_install_certbot() { :; }
+    acme_run_certonly() { echo certonly >>"$MOCK_LOG"; }
+    tb_main install -y --hy2-tls acme --hy2-acme-domain hy2.example.com \
+      --hy2-acme-email admin@example.com --hy2-acme-agree-tos
+  ' _ "$REPO_ROOT"
+  [ "$status" -ne 0 ]
+  [ "$(<"$TB_STATE_FILE")" = "$before_state" ]
+  [ "$(<"$TB_SINGBOX_CONFIG")" = "$before_config" ]
+  [ "$(grep -E '^(fw_open|fw_close|certonly)' "$MOCK_LOG")" = "$(printf 'fw_open 80/tcp\ncertonly\nfw_close 80/tcp')" ]
+  [ "$(state '.firewall.rules | index("80/tcp")')" = "null" ]
+}
+
+@test "acme: owned and administrator 80 rules are not temporarily removed" {
+  local dummy_file="$BATS_TEST_TMPDIR/dummy.pem"
+  : >"$dummy_file"
+  run bash -c '
+    export TOASTBOX_SOURCE_ONLY=1
+    source "$1/src/main.sh"
+    real_fw="$(declare -f fw_backend fw_open fw_close)"
+    source "$1/tests/unit/mocks.bash"
+    eval "$real_fw"
+    ufw() {
+      case "$1" in
+        status) echo "Status: active" ;;
+        allow) echo "allow $2" >>"$MOCK_LOG"; echo "Skipping adding existing rule" ;;
+        delete) echo "delete $3" >>"$MOCK_LOG" ;;
+        *) return 1 ;;
+      esac
+    }
+    acme_check_dns() { :; }
+    acme_check_port_80() { :; }
+    acme_install_certbot() { :; }
+    acme_run_certonly() { :; }
+    dummy_path="$2"
+    acme_live_cert_path() { echo "$dummy_path"; }
+    acme_live_key_path() { echo "$dummy_path"; }
+    tls_validate_pair_files() { :; }
+    tls_cert_matches_name() { :; }
+    acme_import_live_pair() { :; }
+    OPT_NO_FIREWALL=0 CFG_SERVER_ADDR=203.0.113.10
+    CFG_FW_RULES=(80/tcp)
+    acme_provision_cert example.com admin@example.com lineage example.com
+    CFG_FW_RULES=()
+    acme_provision_cert example.com admin@example.com lineage example.com
+  ' _ "$REPO_ROOT" "$dummy_file"
+  [ "$status" -eq 0 ]
+  [ "$(grep -E '^(allow|delete) ' "$MOCK_LOG")" = "allow 80/tcp" ]
+}
+
 @test "acme standalone: option validation, port-80/DNS guards, ECDSA issuance, cert reuse, scoped timer renewal, failure rollback and cleanup" {
   local acmebin="$BATS_TEST_TMPDIR/acmebin" cb_log="$BATS_TEST_TMPDIR/certbot.log"
   mkdir -p "$acmebin"
@@ -725,7 +790,8 @@ EOF
   [ "$(state .hy2.acme.lineage)" = "toastbox-hy2-hy2.example.com" ]
   [ "$(state .hy2.certbot_hook)" = "true" ]
   [ "$(state .hy2.cert_file)" = "$TOASTBOX_CERTBOT_LIVE_DIR/toastbox-hy2-hy2.example.com/fullchain.pem" ]
-  [[ "$(calls)" == *"fw_open 80/tcp"* ]]
+  [ "$(grep -E '^fw_(open|close) 80/tcp$' "$MOCK_LOG")" = "$(printf 'fw_open 80/tcp\nfw_close 80/tcp\nfw_open 80/tcp')" ]
+  [ "$(state '.firewall.rules | index("80/tcp")')" != "null" ]
   [ -x "$TB_CERTBOT_HOOK_PATH" ]
   [ -f "$TB_SYSTEMD_DIR/$TB_HY2_ACME_SERVICE" ]
   [ -f "$TB_SYSTEMD_DIR/$TB_HY2_ACME_TIMER" ]

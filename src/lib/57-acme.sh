@@ -192,8 +192,12 @@ acme_provision_cert() {
   fi
 
   log_info info_hy2_acme_issuing "$domain" "$lineage"
-  if ! acme_run_certonly "$domain" "$email" "$lineage"; then
-    [[ "$opened_80" == "1" ]] && fw_close "80/tcp"
+  local issue_failed=0
+  acme_run_certonly "$domain" "$email" "$lineage" || issue_failed=1
+  # HTTP-01 issuance is finished; successful installation reopens port 80
+  # via sync_firewall for automatic renewal.
+  [[ "$opened_80" == "1" ]] && fw_close "80/tcp"
+  if [[ "$issue_failed" == "1" ]]; then
     die err_hy2_acme_issue "$domain"
   fi
 
@@ -201,17 +205,12 @@ acme_provision_cert() {
   key_file="$(acme_live_key_path "$lineage")"
   if [[ ! -f "$cert_file" || ! -f "$key_file" ]] ||
     ! tls_validate_pair_files "$cert_file" "$key_file"; then
-    [[ "$opened_80" == "1" ]] && fw_close "80/tcp"
     die err_hy2_cert_pair "$cert_file" "$key_file"
   fi
   if ! tls_cert_matches_name "$cert_file" "$verify_name"; then
-    [[ "$opened_80" == "1" ]] && fw_close "80/tcp"
     die err_hy2_cert_sni_mismatch "$verify_name"
   fi
 
-  if [[ "$opened_80" == "1" ]]; then
-    CFG_FW_RULES+=("80/tcp")
-  fi
   acme_import_live_pair "$domain" "$email" "$lineage" "$verify_name"
   log_ok ok_hy2_acme_issued "$domain" "$lineage"
 }

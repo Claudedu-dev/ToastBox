@@ -247,6 +247,66 @@ install_xray() {
   [[ "$(calls)" != *"fw_"* ]]
 }
 
+# Run the real firewall functions against a fake ufw, with state writes failing.
+install_with_failed_state_save() {
+  run bash -c '
+    export TOASTBOX_SOURCE_ONLY=1
+    source "$1/src/main.sh"
+    real_fw="$(declare -f fw_backend fw_open fw_close)"
+    source "$1/tests/unit/mocks.bash"
+    eval "$real_fw"
+    ufw() {
+      case "$1" in
+        status) echo "Status: active" ;;
+        allow) echo "allow $2" >>"$MOCK_LOG"; echo "Rule added" ;;
+        delete) echo "delete $3" >>"$MOCK_LOG" ;;
+        *) return 1 ;;
+      esac
+    }
+    state_save() { return 1; }
+    shift
+    tb_main install -y "$@"
+  ' _ "$REPO_ROOT" "$@"
+}
+
+@test "install: state save failure restores previous firewall rules and config" {
+  export MOCK_FW_BACKEND=ufw
+  install_xray --protocols vless
+  [ "$status" -eq 0 ]
+  local before_state before_config
+  before_state="$(<"$TB_STATE_FILE")"
+  before_config="$(<"$TB_XRAY_CONFIG")"
+  : >"$MOCK_LOG"
+  install_with_failed_state_save --vless-port 8443
+  [ "$status" -ne 0 ]
+  [ "$(<"$TB_STATE_FILE")" = "$before_state" ]
+  [ "$(<"$TB_XRAY_CONFIG")" = "$before_config" ]
+  [ "$(grep -E '^(allow|delete) ' "$MOCK_LOG")" = "$(printf 'delete 443/tcp\nallow 8443/tcp\ndelete 8443/tcp\nallow 443/tcp')" ]
+}
+
+@test "install: first install state save failure removes new firewall rule" {
+  : >"$MOCK_LOG"
+  install_with_failed_state_save --core xray --protocols vless --server-addr 203.0.113.10 --reality-sni www.example.com
+  [ "$status" -ne 0 ]
+  [ ! -e "$TB_STATE_FILE" ]
+  [ "$(grep -E '^(allow|delete) ' "$MOCK_LOG")" = "$(printf 'allow 443/tcp\ndelete 443/tcp')" ]
+}
+
+@test "install: no-firewall state save failure leaves firewall untouched" {
+  export MOCK_FW_BACKEND=ufw
+  install_xray --protocols vless
+  [ "$status" -eq 0 ]
+  local before_state before_config
+  before_state="$(<"$TB_STATE_FILE")"
+  before_config="$(<"$TB_XRAY_CONFIG")"
+  : >"$MOCK_LOG"
+  install_with_failed_state_save --no-firewall --vless-port 8443
+  [ "$status" -ne 0 ]
+  [ "$(<"$TB_STATE_FILE")" = "$before_state" ]
+  [ "$(<"$TB_XRAY_CONFIG")" = "$before_config" ]
+  ! grep -Eq '^(allow|delete) ' "$MOCK_LOG"
+}
+
 @test "install: an unsynchronized clock is called out for Shadowsocks" {
   export MOCK_CLOCK_UNSYNCED=1
   install_xray

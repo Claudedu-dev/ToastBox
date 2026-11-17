@@ -1266,9 +1266,13 @@ cmd_install() {
     acme_timer_remove
   fi
 
+  local -a old_fw_rules=("${CFG_FW_RULES[@]}")
   sync_firewall
 
   if ! state_save; then
+    if [[ "$OPT_NO_FIREWALL" != "1" ]]; then
+      fw_sync "${old_fw_rules[@]}"
+    fi
     acme_timer_restore "$acme_backup"
     certbot_hook_restore "$hook_backup"
     hy2_hop_restore "$hop_backup"
