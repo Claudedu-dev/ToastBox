@@ -715,7 +715,8 @@ E2E_CA_CRT="$work/ca.crt" E2E_CA_KEY="$work/ca.key" "$work/acme-bin/certbot" ren
 [[ "$(state .hy2.cert_sha256)" != "$acme_sha1" ]] || fail "ACME renewal did not update node cert_sha256"
 
 # Switch server back to 127.0.0.1 with hop restored, then test uninstall --purge.
-tb install -y --server-addr 127.0.0.1 --hy2-port 8443 --hy2-hop-ports '20001-20008' >/dev/null
+PATH="$work/acme-bin:$PATH" E2E_CA_CRT="$work/ca.crt" E2E_CA_KEY="$work/ca.key" \
+  tb install -y --server-addr 127.0.0.1 --hy2-port 8443 --hy2-hop-ports '20001-20008' >/dev/null
 step "uninstall --purge"
 tb uninstall -y --purge
 if systemctl -q is-active "$service"; then fail "$service is still active"; fi
