@@ -122,3 +122,160 @@ q() { jq -r "$1" <<<"$output"; }
   [ "$status" -ne 0 ]
   [[ "$output" == *"not enabled"* ]]
 }
+
+@test "hy2_link formats self-signed, files, salamander and IPv6 correctly" {
+  sample_hy2
+  run hy2_link
+  [ "$status" -eq 0 ]
+  [ "$output" = "hysteria2://hy2-secret-password@203.0.113.10:443/?obfs=salamander&obfs-password=obfs-secret-password&insecure=1&pinSHA256=${CFG_HY2_CERT_SHA256}&sni=hy2.example.com#ToastBox-hy2" ]
+
+  CFG_SERVER_ADDR="2001:db8::1"
+  CFG_HY2_TLS="files"
+  CFG_HY2_OBFS="none"
+  run hy2_link
+  [ "$output" = "hysteria2://hy2-secret-password@[2001:db8::1]:443/?sni=hy2.example.com#ToastBox-hy2" ]
+}
+
+@test "client configs handle Hysteria 2 trust modes and default outbound priority" {
+  sample_hy2
+  OUT_VLESS=1
+  OUT_SS=1
+  OUT_HY2=1
+
+  run client_xray_json
+  [ "$status" -eq 0 ]
+  [ "$(q '.outbounds[0].tag')" = "vless-reality" ]
+  [ "$(q '.outbounds[2].protocol')" = "hysteria" ]
+  [ "$(q '.outbounds[2].streamSettings.method')" = "hysteria" ]
+  [ "$(q '.outbounds[2].streamSettings.tlsSettings.pinnedPeerCertSha256')" = "$CFG_HY2_CERT_SHA256" ]
+  [ "$(q '.outbounds[2].streamSettings.tlsSettings | has("useSystemCA")')" = "false" ]
+  [ "$(q '.outbounds[2].streamSettings.hysteriaSettings.auth')" = "hy2-secret-password" ]
+  [ "$(q '.outbounds[2].streamSettings.finalmask.udp[0].type')" = "salamander" ]
+  [[ "$output" != *"$CFG_HY2_KEY"* ]]
+
+  run client_singbox_json
+  [ "$status" -eq 0 ]
+  [ "$(q '.outbounds[2].type')" = "hysteria2" ]
+  [ "$(q '.outbounds[2].tls.certificate[0]')" = "-----BEGIN CERTIFICATE-----" ]
+  [ "$(q '.outbounds[2].obfs.password')" = "obfs-secret-password" ]
+  [ "$(q '.route.final')" = "vless-reality" ]
+  [[ "$output" != *"$CFG_HY2_KEY"* ]]
+
+  # Hy2-only export updates sing-box route.final and matches official hysteria2 format.
+  OUT_VLESS=0
+  OUT_SS=0
+  run client_singbox_json
+  [ "$(q '.route.final')" = "hysteria2" ]
+
+  run client_hysteria2_json
+  [ "$status" -eq 0 ]
+  [ "$(q '.server')" = "203.0.113.10:443" ]
+  [ "$(q '.auth')" = "hy2-secret-password" ]
+  [ "$(q '.socks5.listen')" = "127.0.0.1:1080" ]
+  [ "$(q '.tls.insecure')" = "true" ]
+  [ "$(q '.tls.pinSHA256')" = "$CFG_HY2_CERT_SHA256" ]
+  [ "$(q '.tls.sni')" = "hy2.example.com" ]
+  [ "$(q '.obfs.type')" = "salamander" ]
+  [ "$(q '.obfs.salamander.password')" = "obfs-secret-password" ]
+
+  # files mode uses system CA verification (no insecure / pinSHA256 / inline cert).
+  CFG_HY2_TLS="files"
+  CFG_HY2_OBFS="none"
+  run client_hysteria2_json
+  [ "$(q '.tls | has("insecure")')" = "false" ]
+  [ "$(q '.tls | has("pinSHA256")')" = "false" ]
+  [ "$(q '. | has("obfs")')" = "false" ]
+  run client_xray_json
+  [ "$(q '.outbounds[0].streamSettings.tlsSettings | has("pinnedPeerCertSha256")')" = "false" ]
+  [ "$(q '.outbounds[0].streamSettings.tlsSettings.useSystemCA')" = "true" ]
+  run client_singbox_json
+  [ "$(q '.outbounds[0].tls | has("certificate")')" = "false" ]
+
+  OUT_HY2=0
+  run client_hysteria2_json
+  [ "$status" -ne 0 ]
+}
+
+@test "show_json includes hy2 link and excludes hy2 private key" {
+  sample_hy2
+  OUT_HY2=1
+  run show_json
+  [ "$status" -eq 0 ]
+  [ "$(q '.links.hy2')" = "$(hy2_link)" ]
+  [ "$(q '.hy2 | has("key")')" = "false" ]
+  [[ "$output" != *"$CFG_HY2_KEY"* ]]
+}
+
+@test "port hopping renders across URI and Xray / sing-box / Hysteria 2 client JSON" {
+  sample_hy2
+  OUT_VLESS=0
+  OUT_SS=0
+  OUT_HY2=1
+  CFG_HY2_TLS="files"
+  CFG_HY2_OBFS="salamander"
+  CFG_HY2_HOP_PORTS="20000-20100,30000"
+  CFG_HY2_HOP_INTERVAL_MIN=30
+  CFG_HY2_HOP_INTERVAL_MAX=30
+
+  # URI preserves multi-port syntax verbatim and brackets IPv6.
+  CFG_HY2_PASSWORD="p@ss word/+"
+  CFG_NODE_NAME="Node #1"
+  run hy2_link
+  [ "$status" -eq 0 ]
+  [ "$output" = "hysteria2://p%40ss%20word%2F%2B@203.0.113.10:20000-20100,30000/?obfs=salamander&obfs-password=obfs-secret-password&sni=hy2.example.com#Node%20%231-hy2" ]
+
+  CFG_SERVER_ADDR="2001:db8::1"
+  run hy2_link
+  [[ "$output" == "hysteria2://p%40ss%20word%2F%2B@[2001:db8::1]:20000-20100,30000/"* ]]
+
+  CFG_SERVER_ADDR="203.0.113.10"
+  CFG_HY2_PASSWORD="hy2-secret-password"
+
+  # Xray fixed interval + salamander ordering ([salamander, udphop]).
+  run client_xray_json
+  [ "$status" -eq 0 ]
+  [ "$(q '.outbounds[0].streamSettings.finalmask.udp | length')" = "2" ]
+  [ "$(q '.outbounds[0].streamSettings.finalmask.udp[0].type')" = "salamander" ]
+  [ "$(q '.outbounds[0].streamSettings.finalmask.udp[1].type')" = "udphop" ]
+  [ "$(q '.outbounds[0].streamSettings.finalmask.udp[1].settings.mode')" = "intervallocal,intervalremote" ]
+  [ "$(q '.outbounds[0].streamSettings.finalmask.udp[1].settings.interval')" = "30" ]
+  [ "$(q '.outbounds[0].streamSettings.finalmask.udp[1].settings.remotePorts')" = "20000-20100,30000" ]
+
+  # sing-box fixed interval: colon ranges including single port, omits server_port.
+  run client_singbox_json
+  [ "$status" -eq 0 ]
+  [ "$(q '.outbounds[0] | has("server_port")')" = "false" ]
+  [ "$(q '.outbounds[0].server_ports | join(",")')" = "20000:20100,30000:30000" ]
+  [ "$(q '.outbounds[0].hop_interval')" = "30s" ]
+  [ "$(q '.outbounds[0] | has("hop_interval_max")')" = "false" ]
+
+  # Official Hysteria fixed interval uses hopInterval only.
+  run client_hysteria2_json
+  [ "$status" -eq 0 ]
+  [ "$(q '.server')" = "203.0.113.10:20000-20100,30000" ]
+  [ "$(q '.transport.udp.hopInterval')" = "30s" ]
+  [ "$(q '.transport.udp | has("minHopInterval")')" = "false" ]
+  [ "$(q '.transport.udp | has("maxHopInterval")')" = "false" ]
+
+  # Random interval without salamander across all three clients.
+  CFG_HY2_OBFS="none"
+  CFG_HY2_HOP_INTERVAL_MIN=15
+  CFG_HY2_HOP_INTERVAL_MAX=45
+
+  run client_xray_json
+  [ "$status" -eq 0 ]
+  [ "$(q '.outbounds[0].streamSettings.finalmask.udp | length')" = "1" ]
+  [ "$(q '.outbounds[0].streamSettings.finalmask.udp[0].type')" = "udphop" ]
+  [ "$(q '.outbounds[0].streamSettings.finalmask.udp[0].settings.interval')" = "15-45" ]
+
+  run client_singbox_json
+  [ "$status" -eq 0 ]
+  [ "$(q '.outbounds[0].hop_interval')" = "15s" ]
+  [ "$(q '.outbounds[0].hop_interval_max')" = "45s" ]
+
+  run client_hysteria2_json
+  [ "$status" -eq 0 ]
+  [ "$(q '.transport.udp | has("hopInterval")')" = "false" ]
+  [ "$(q '.transport.udp.minHopInterval')" = "15s" ]
+  [ "$(q '.transport.udp.maxHopInterval')" = "45s" ]
+}

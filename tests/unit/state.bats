@@ -96,3 +96,97 @@ setup() { load_toastbox; }
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
+
+@test "hy2 state round-trips multiline PEM certificates and settings" {
+  sample_node
+  sample_hy2
+  state_save
+  local before
+  before="$(state_json)"
+
+  cfg_reset
+  state_load
+  [ "$CFG_HY2" = "1" ]
+  [ "$CFG_HY2_PORT" = "443" ]
+  [ "$CFG_HY2_PASSWORD" = "hy2-secret-password" ]
+  [ "$CFG_HY2_TLS" = "self-signed" ]
+  [ "$CFG_HY2_SNI" = "hy2.example.com" ]
+  [ "$CFG_HY2_OBFS" = "salamander" ]
+  [ "$CFG_HY2_OBFS_PASSWORD" = "obfs-secret-password" ]
+  [ "$CFG_HY2_MASQUERADE" = "https://www.example.com" ]
+  [[ "$CFG_HY2_CERT" == *"BEGIN CERTIFICATE"* ]]
+  [[ "$CFG_HY2_KEY" == *"BEGIN PRIVATE KEY"* ]]
+  [ "$(state_json)" = "$before" ]
+}
+
+@test "legacy state files without hy2 default hy2 to disabled" {
+  sample_node
+  mkdir -p "$TB_STATE_DIR"
+  state_json | jq 'del(.hy2)' >"$TB_STATE_FILE"
+  cfg_reset
+  state_load
+  [ "$TB_HAS_STATE" = "1" ]
+  [ "$CFG_HY2" = "0" ]
+  [ -z "$CFG_HY2_PORT" ]
+  [ -z "$CFG_HY2_CERT" ]
+  [ "$CFG_HY2_CERTBOT_HOOK" = "0" ]
+  [ -z "$CFG_HY2_CERT_FILE" ]
+  [ -z "$CFG_HY2_HOP_PORTS" ]
+  [ "$CFG_HY2_HOP_INTERVAL_MIN" = "30" ]
+  [ "$CFG_HY2_HOP_INTERVAL_MAX" = "30" ]
+}
+
+@test "hy2 cert source, certbot_hook and hop fields round-trip and legacy without hop loads defaults" {
+  sample_node
+  sample_hy2
+  CFG_HY2_TLS="files"
+  CFG_HY2_CERT_FILE="/etc/letsencrypt/live/toastweb-docs.example.org/fullchain.pem"
+  CFG_HY2_KEY_FILE="/etc/letsencrypt/live/toastweb-docs.example.org/privkey.pem"
+  CFG_HY2_CERTBOT_HOOK=1
+  CFG_HY2_HOP_PORTS="20000-20100,30000"
+  CFG_HY2_HOP_INTERVAL_MIN=15
+  CFG_HY2_HOP_INTERVAL_MAX=45
+  state_save
+  local before
+  before="$(state_json)"
+
+  cfg_reset
+  state_load
+  [ "$CFG_HY2_CERT_FILE" = "/etc/letsencrypt/live/toastweb-docs.example.org/fullchain.pem" ]
+  [ "$CFG_HY2_KEY_FILE" = "/etc/letsencrypt/live/toastweb-docs.example.org/privkey.pem" ]
+  [ "$CFG_HY2_CERTBOT_HOOK" = "1" ]
+  [ "$CFG_HY2_HOP_PORTS" = "20000-20100,30000" ]
+  [ "$CFG_HY2_HOP_INTERVAL_MIN" = "15" ]
+  [ "$CFG_HY2_HOP_INTERVAL_MAX" = "45" ]
+  [ "$(state_json)" = "$before" ]
+
+  # Removing .hy2.hop simulates pre-hop schema-1 state files.
+  state_json | jq 'del(.hy2.hop, .hy2.cert_file, .hy2.key_file, .hy2.certbot_hook)' >"$TB_STATE_FILE"
+  cfg_reset
+  state_load
+  [ "$CFG_HY2_CERTBOT_HOOK" = "0" ]
+  [ -z "$CFG_HY2_HOP_PORTS" ]
+  [ "$CFG_HY2_HOP_INTERVAL_MIN" = "30" ]
+  [ "$CFG_HY2_HOP_INTERVAL_MAX" = "30" ]
+}
+
+@test "malformed saved hy2.hop or certbot_hook fails state_load cleanly" {
+  sample_node
+  sample_hy2
+  state_save
+  cp "$TB_STATE_FILE" "$BATS_TEST_TMPDIR/good.json"
+
+  local bad
+  for bad in \
+    '.hy2.hop = "bad"' \
+    '.hy2.hop.ports = "20000"' \
+    '.hy2.hop.ports = "20100-20000"' \
+    '.hy2.hop.interval_min = 4' \
+    '.hy2.hop.interval_min = 50 | .hy2.hop.interval_max = 20' \
+    '.hy2.certbot_hook = "yes"'; do
+    jq "$bad" "$BATS_TEST_TMPDIR/good.json" >"$TB_STATE_FILE"
+    run state_load
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"damaged"* ]]
+  done
+}

@@ -100,9 +100,16 @@ setup() { load_toastbox; }
   [ "$(norm_core 1)" = "xray" ]
   [ "$(norm_core singbox)" = "sing-box" ]
   refute norm_core v2ray
-  [ "$(norm_protocols all)" = "vless,ss" ]
+  [ "$(norm_protocols all)" = "vless,ss,hy2" ]
+  [ "$(norm_protocols both)" = "vless,ss" ]
   [ "$(norm_protocols ss,vless)" = "vless,ss" ]
+  [ "$(norm_protocols vless,hy2)" = "vless,hy2" ]
+  [ "$(norm_protocols 1)" = "vless,ss" ]
   [ "$(norm_protocols 2)" = "vless" ]
+  [ "$(norm_protocols 3)" = "ss" ]
+  [ "$(norm_protocols 4)" = "hy2" ]
+  [ "$(norm_protocols 5)" = "vless,ss,hy2" ]
+  [ "$(norm_protocols hysteria2)" = "hy2" ]
   [ "$(norm_protocols shadowsocks)" = "ss" ]
   refute norm_protocols trojan
   refute norm_protocols ""
@@ -113,7 +120,67 @@ setup() { load_toastbox; }
   refute norm_ss_method aes-256-gcm
   [ "$(norm_ss_network tcp,udp)" = "both" ]
   [ "$(norm_format singbox)" = "sing-box" ]
+  [ "$(norm_format hy2)" = "hysteria2" ]
+  [ "$(norm_format hysteria2)" = "hysteria2" ]
+  [ "$(norm_hy2_tls 1)" = "self-signed" ]
+  [ "$(norm_hy2_tls 2)" = "files" ]
+  refute norm_hy2_tls acme
+  [ "$(norm_hy2_obfs 1)" = "none" ]
+  [ "$(norm_hy2_obfs 2)" = "salamander" ]
+  refute norm_hy2_obfs gecko
+  [ "$(norm_hy2_masquerade none)" = "none" ]
+  [ "$(norm_hy2_masquerade https://www.example.com/path)" = "https://www.example.com/path" ]
+  [ "$(norm_hy2_masquerade http://127.0.0.1:8080)" = "http://127.0.0.1:8080" ]
+  refute norm_hy2_masquerade ftp://example.com
+  refute norm_hy2_masquerade "https://bad host"
+  [ "$(norm_hy2_sni WWW.Example.COM)" = "www.example.com" ]
+  [ "$(norm_hy2_sni '[2001:db8::1]')" = "2001:db8::1" ]
+  refute norm_hy2_sni "not a host"
   [ "$(norm_version v26.11.9)" = "26.11.9" ]
   [ "$(norm_version 1.15.0-alpha.13)" = "1.15.0-alpha.13" ]
   refute norm_version latest
+  [ "$(norm_hy2_cert_hook certbot)" = "certbot" ]
+  [ "$(norm_hy2_cert_hook off)" = "none" ]
+  refute norm_hy2_cert_hook acme
+}
+
+@test "norm_hy2_hop_ports canonicalizes ranges, merges overlaps and rejects invalid sets" {
+  [ "$(norm_hy2_hop_ports 20000-20100)" = "20000-20100" ]
+  [ "$(norm_hy2_hop_ports '30000,20000-20050,20040-20100,20101,30000')" = "20000-20101,30000" ]
+  [ "$(norm_hy2_hop_ports '20000,20001')" = "20000-20001" ]
+  [ "$(norm_hy2_hop_ports '20000,20002')" = "20000,20002" ]
+  [ "$(norm_hy2_hop_ports none)" = "none" ]
+  [ "$(norm_hy2_hop_ports off)" = "none" ]
+  refute norm_hy2_hop_ports ""
+  refute norm_hy2_hop_ports "20000"
+  refute norm_hy2_hop_ports "20000,20000"
+  refute norm_hy2_hop_ports "20100-20000"
+  refute norm_hy2_hop_ports "0-10"
+  refute norm_hy2_hop_ports "20000-65536"
+  refute norm_hy2_hop_ports "20000,,20001"
+  refute norm_hy2_hop_ports "20000, 20001"
+}
+
+@test "hy2_hop_redirect_ranges excludes the Hy2 listen port cleanly" {
+  [ "$(hy2_hop_redirect_ranges "443,20000-20100" 443 | tr '\n' ',')" = "20000-20100," ]
+  [ "$(hy2_hop_redirect_ranges "440-446,30000" 443 | tr '\n' ',')" = "440-442,444-446,30000," ]
+  [ "$(hy2_hop_redirect_ranges "443-444" 443 | tr '\n' ',')" = "444," ]
+  hy2_hop_contains_port "443,20000-20100" 20050
+  hy2_hop_contains_port "443,20000-20100" 443
+  refute hy2_hop_contains_port "443,20000-20100" 20101
+}
+
+@test "norm_hy2_hop_interval enforces integer bounds and ordering" {
+  [ "$(norm_hy2_hop_interval 5)" = "5" ]
+  [ "$(norm_hy2_hop_interval 0030)" = "30" ]
+  [ "$(norm_hy2_hop_interval 15-45)" = "15-45" ]
+  [ "$(norm_hy2_hop_interval 30-30)" = "30" ]
+  [ "$(norm_hy2_hop_interval 2147483647)" = "2147483647" ]
+  refute norm_hy2_hop_interval 4
+  refute norm_hy2_hop_interval 30s
+  refute norm_hy2_hop_interval 15.5
+  refute norm_hy2_hop_interval 45-15
+  refute norm_hy2_hop_interval 4-30
+  refute norm_hy2_hop_interval 2147483648
+  refute norm_hy2_hop_interval 999999999999999999
 }

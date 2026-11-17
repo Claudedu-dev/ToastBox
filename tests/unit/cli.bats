@@ -122,3 +122,28 @@ tb_env() {
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
+
+@test "new hy2 cert hook, hop flags and refresh-cert constraints are validated" {
+  run validate_options
+  opt_reset
+  parse_args install --hy2-cert-hook certbot --hy2-hop-ports '30000,20000-20100' --hy2-hop-interval 15-45
+  validate_options
+  [ "$OPT_HY2_CERT_HOOK" = "certbot" ]
+  [ "$OPT_HY2_HOP_PORTS" = "20000-20100,30000" ]
+  [ "$OPT_HY2_HOP_INTERVAL" = "15-45" ]
+
+  tb install --hy2-cert-hook bad
+  [ "$status" -ne 0 ]
+  tb install --hy2-tls self-signed --hy2-cert-hook certbot
+  [ "$status" -ne 0 ]
+  tb install --hy2-hop-ports 20000
+  [ "$status" -ne 0 ]
+  tb install --hy2-hop-ports none --hy2-hop-interval 15
+  [ "$status" -ne 0 ]
+  tb refresh-cert --core xray
+  [ "$status" -ne 0 ]
+  tb refresh-cert --hy2-hop-ports 20000-20100
+  [ "$status" -ne 0 ]
+  tb show --hy2-hop-ports 20000-20100
+  [ "$status" -ne 0 ]
+}

@@ -69,9 +69,11 @@ q() { jq -r "$1" <<<"$output"; }
   [ "$(q '.routing.rules[0].ip | index("169.254.0.0/16") != null')" = "true" ]
   [ "$(q '.routing.rules[0].ip | index("fc00::/7") != null')" = "true" ]
   [ "$(q '[.outbounds[].protocol] | join(",")')" = "freedom,blackhole" ]
+  [ "$(q '.outbounds[0] | has("settings")')" = "false" ]
   CFG_ALLOW_PRIVATE=1
   run xray_render
   [ "$(q '.routing.rules | length')" = "0" ]
+  [ "$(q '.outbounds[0].settings.finalRules[0].action')" = "allow" ]
 }
 
 @test "xray: --block-bt adds sniffing and a bittorrent rule" {
@@ -172,4 +174,57 @@ q() { jq -r "$1" <<<"$output"; }
   run singbox_render
   [ "$status" -eq 0 ]
   [ "$(q '.inbounds[1].password')" = 'a"b\c' ]
+}
+
+@test "xray: Hysteria 2 inbound renders current fields, inline TLS, salamander and masquerade" {
+  sample_hy2
+  CFG_LISTEN="203.0.113.10"
+  CFG_BLOCK_BT=1
+  CFG_SOCKOPT='{"tcpKeepAliveIdle":120}'
+  run xray_render
+  [ "$status" -eq 0 ]
+  [ "$(q '.inbounds[2].protocol')" = "hysteria" ]
+  [ "$(q '.inbounds[2].port')" = "443" ]
+  [ "$(q '.inbounds[2].listen')" = "203.0.113.10" ]
+  [ "$(q '.inbounds[2].settings.version')" = "2" ]
+  [ "$(q '.inbounds[2].settings.users[0].auth')" = "hy2-secret-password" ]
+  [ "$(q '.inbounds[2].streamSettings.method')" = "hysteria" ]
+  [ "$(q '.inbounds[2].streamSettings.security')" = "tls" ]
+  [ "$(q '.inbounds[2].streamSettings.tlsSettings.alpn | join(",")')" = "h3" ]
+  [ "$(q '.inbounds[2].streamSettings.tlsSettings.certificates[0].certificate[0]')" = "-----BEGIN CERTIFICATE-----" ]
+  [ "$(q '.inbounds[2].streamSettings.tlsSettings.certificates[0].key[0]')" = "-----BEGIN PRIVATE KEY-----" ]
+  [ "$(q '.inbounds[2].streamSettings.hysteriaSettings.version')" = "2" ]
+  [ "$(q '.inbounds[2].streamSettings.hysteriaSettings.masquerade.type')" = "proxy" ]
+  [ "$(q '.inbounds[2].streamSettings.hysteriaSettings.masquerade.url')" = "https://www.example.com" ]
+  [ "$(q '.inbounds[2].streamSettings.hysteriaSettings.masquerade.rewriteHost')" = "true" ]
+  [ "$(q '.inbounds[2].streamSettings.finalmask.udp[0].type')" = "salamander" ]
+  [ "$(q '.inbounds[2].streamSettings.finalmask.udp[0].settings.password')" = "obfs-secret-password" ]
+  [ "$(q '.inbounds[2].streamSettings | has("sockopt")')" = "false" ]
+  [ "$(q '.inbounds[2].sniffing.enabled')" = "true" ]
+}
+
+@test "sing-box: Hysteria 2 inbound renders TLS, obfs and masquerade" {
+  sample_hy2
+  CFG_BLOCK_BT=1
+  run singbox_render
+  [ "$status" -eq 0 ]
+  [ "$(q '.inbounds[2].type')" = "hysteria2" ]
+  [ "$(q '.inbounds[2].listen')" = "::" ]
+  [ "$(q '.inbounds[2].listen_port')" = "443" ]
+  [ "$(q '.inbounds[2].users[0].password')" = "hy2-secret-password" ]
+  [ "$(q '.inbounds[2].tls.enabled')" = "true" ]
+  [ "$(q '.inbounds[2].tls.certificate[0]')" = "-----BEGIN CERTIFICATE-----" ]
+  [ "$(q '.inbounds[2].tls.key[0]')" = "-----BEGIN PRIVATE KEY-----" ]
+  [ "$(q '.inbounds[2].obfs.type')" = "salamander" ]
+  [ "$(q '.inbounds[2].obfs.password')" = "obfs-secret-password" ]
+  [ "$(q '.inbounds[2].masquerade.type')" = "proxy" ]
+  [ "$(q '.inbounds[2].masquerade.url')" = "https://www.example.com" ]
+  [ "$(q '.inbounds[2].masquerade.rewrite_host')" = "true" ]
+
+  CFG_HY2_OBFS="none"
+  CFG_HY2_MASQUERADE=""
+  run singbox_render
+  [ "$status" -eq 0 ]
+  [ "$(q '.inbounds[2] | has("obfs")')" = "false" ]
+  [ "$(q '.inbounds[2] | has("masquerade")')" = "false" ]
 }

@@ -52,21 +52,123 @@ xray_validate() {
   "$TB_XRAY_BIN" run -test -c "$1"
 }
 
-# The service runs as the unprivileged `xray` user: the configuration holds
-# the REALITY private key, so it is readable by root and that group only.
+XRAY_CFG_OWNER="root"
+XRAY_CFG_GROUP="root"
+XRAY_CFG_MODE="600"
+
+xray_is_dedicated_group() {
+  case "$1" in
+    "" | root | nogroup | nobody | users) return 1 ;;
+    *) getent group "$1" >/dev/null 2>&1 ;;
+  esac
+}
+
+xray_first_dedicated_group() {
+  local -a groups=()
+  local grp
+  [[ -n "$1" ]] || return 1
+  IFS=' ' read -r -a groups <<<"$1"
+  for grp in "${groups[@]}"; do
+    if xray_is_dedicated_group "$grp"; then
+      printf '%s' "$grp"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Resolves owner, group and mode for TB_XRAY_CONFIG from the xray systemd
+# unit so credentials are never exposed world-readable (0644).
+xray_config_perms() {
+  local svc svc_user="" svc_group="" supp_groups="" dyn_user=""
+  local primary_gid="" primary_grp="" grp=""
+  XRAY_CFG_OWNER="root"
+  XRAY_CFG_GROUP="root"
+  XRAY_CFG_MODE="600"
+
+  svc="$(xray_service)"
+  if service_unit_exists "$svc"; then
+    svc_user="$(service_unit_prop "$svc" User)"
+    svc_group="$(service_unit_prop "$svc" Group)"
+    supp_groups="$(service_unit_prop "$svc" SupplementaryGroups)"
+    dyn_user="$(service_unit_prop "$svc" DynamicUser)"
+
+    # When the unit runs as root, keep the configuration strictly root-only.
+    if [[ "$dyn_user" != "yes" ]] &&
+      [[ -z "$svc_user" || "$svc_user" == "root" || "$svc_user" == "0" ]]; then
+      return 0
+    fi
+
+    if xray_is_dedicated_group "$svc_group"; then
+      XRAY_CFG_GROUP="$svc_group"
+      XRAY_CFG_MODE="640"
+      return 0
+    fi
+
+    if [[ "$dyn_user" == "yes" ]]; then
+      if grp="$(xray_first_dedicated_group "$supp_groups")"; then
+        XRAY_CFG_GROUP="$grp"
+        XRAY_CFG_MODE="640"
+        return 0
+      fi
+      log_err err_xray_dynamic_user "$svc" "$TB_XRAY_CONFIG"
+      return 1
+    fi
+
+    primary_gid="$(getent passwd "$svc_user" 2>/dev/null | awk -F: 'NR == 1 {print $4}')"
+    if [[ -z "$primary_gid" ]]; then
+      log_err err_xray_service_user "$svc" "$svc_user"
+      return 1
+    fi
+    primary_grp="$(getent group "$primary_gid" 2>/dev/null | awk -F: 'NR == 1 {print $1}')"
+    if [[ -z "$svc_group" ]] && xray_is_dedicated_group "$primary_grp"; then
+      XRAY_CFG_GROUP="$primary_grp"
+      XRAY_CFG_MODE="640"
+      return 0
+    fi
+
+    if grp="$(xray_first_dedicated_group "$supp_groups")"; then
+      XRAY_CFG_GROUP="$grp"
+      XRAY_CFG_MODE="640"
+      return 0
+    fi
+
+    # Service runs as an unprivileged user without a dedicated group (e.g.
+    # nobody or a system account in nogroup): restrict reads to that UID only.
+    XRAY_CFG_OWNER="$svc_user"
+    XRAY_CFG_GROUP="root"
+    XRAY_CFG_MODE="600"
+    return 0
+  fi
+
+  # Fallback when systemd is unavailable or the unit is not installed yet.
+  if getent group xray >/dev/null 2>&1; then
+    XRAY_CFG_GROUP="xray"
+    XRAY_CFG_MODE="640"
+  elif getent passwd xray >/dev/null 2>&1; then
+    XRAY_CFG_OWNER="xray"
+    XRAY_CFG_GROUP="root"
+    XRAY_CFG_MODE="600"
+  fi
+  return 0
+}
+
+# The service usually runs as the unprivileged `xray` user: the configuration
+# holds the REALITY private key, so access is restricted to root and the
+# service identity (never world-readable).
 xray_install_config() {
-  local src="$1" dir tmp mode="644" group="root"
+  local src="$1" dir tmp
   dir="$(dirname "$TB_XRAY_CONFIG")"
   tmp="$TB_XRAY_CONFIG.toastbox-new"
-  # Without the dedicated group (Xray not installed by the official script)
-  # the file has to stay world-readable for the service user.
-  if getent group xray >/dev/null 2>&1; then
-    mode="640"
-    group="xray"
+  xray_config_perms || return 1
+  if [[ ! -d "$dir" ]]; then
+    install -d -m 755 "$dir" || return 1
   fi
-  install -d "$dir"
-  install_owned "$mode" "$group" "$src" "$tmp"
-  mv -f "$tmp" "$TB_XRAY_CONFIG"
+  if ! install_owned "$XRAY_CFG_MODE" "$XRAY_CFG_OWNER" "$XRAY_CFG_GROUP" "$src" "$tmp" ||
+    ! mv -f "$tmp" "$TB_XRAY_CONFIG"; then
+    rm -f "$tmp"
+    return 1
+  fi
 }
 
 # Xray loads exactly one file, so nothing else can leak into the node.
@@ -97,6 +199,14 @@ xray_render() {
     --arg ss_method "$CFG_SS_METHOD" \
     --arg ss_password "$CFG_SS_PASSWORD" \
     --arg ss_network "$ss_network" \
+    --arg hy2 "$CFG_HY2" \
+    --arg hy2_port "$CFG_HY2_PORT" \
+    --arg hy2_password "$CFG_HY2_PASSWORD" \
+    --arg hy2_cert "$CFG_HY2_CERT" \
+    --arg hy2_key "$CFG_HY2_KEY" \
+    --arg hy2_obfs "$CFG_HY2_OBFS" \
+    --arg hy2_obfs_password "$CFG_HY2_OBFS_PASSWORD" \
+    --arg hy2_masquerade "$CFG_HY2_MASQUERADE" \
     --args '
     def with_listen: if $listen == "" then . else {listen: $listen} + . end;
     # routeOnly: the sniffed protocol is used for routing only, the
@@ -105,6 +215,7 @@ xray_render() {
       if $block_bt == "1"
       then . + {sniffing: {enabled: true, destOverride: ["http", "tls", "quic"], routeOnly: true}}
       else . end;
+    def pem_lines: sub("\n+$"; "") | split("\n");
 
     {
       log: {access: "none", logLevel: "warning"},
@@ -145,10 +256,55 @@ xray_render() {
           + (if $sockopt != {} and $ss_network != "udp"
              then {streamSettings: {sockopt: $sockopt}} else {} end)
           | with_listen | with_sniffing
+        else empty end),
+        (if $hy2 == "1" then
+          {
+            tag: "hysteria2",
+            port: ($hy2_port | tonumber),
+            protocol: "hysteria",
+            settings: {
+              version: 2,
+              users: [{auth: $hy2_password}]
+            },
+            streamSettings: ({
+              method: "hysteria",
+              security: "tls",
+              tlsSettings: {
+                alpn: ["h3"],
+                certificates: [
+                  {
+                    certificate: ($hy2_cert | pem_lines),
+                    key: ($hy2_key | pem_lines)
+                  }
+                ]
+              },
+              hysteriaSettings: ({
+                version: 2
+              } + (if $hy2_masquerade != "" then {
+                masquerade: {
+                  type: "proxy",
+                  url: $hy2_masquerade,
+                  rewriteHost: true
+                }
+              } else {} end))
+            } + (if $hy2_obfs == "salamander" then {
+              finalmask: {
+                udp: [
+                  {
+                    type: "salamander",
+                    settings: {password: $hy2_obfs_password}
+                  }
+                ]
+              }
+            } else {} end))
+          } | with_listen | with_sniffing
         else empty end)
       ],
       outbounds: [
-        {tag: "direct", protocol: "freedom"},
+        ({tag: "direct", protocol: "freedom"}
+         + (if $allow_private == "1"
+            then {settings: {finalRules: [{action: "allow"}]}}
+            else {} end)),
         {tag: "block", protocol: "blackhole"}
       ],
       routing: {

@@ -34,6 +34,19 @@ valid_host() {
   valid_ipv4 "$1" || valid_ipv6 "$1" || valid_domain "$1"
 }
 
+valid_http_url() {
+  local url="$1" rest authority
+  [[ "$url" =~ ^https?://[^[:space:]]+$ ]] || return 1
+  rest="${url#*://}"
+  authority="${rest%%[/?#]*}"
+  [[ "$authority" == "localhost" ]] && return 0
+  if [[ "$authority" == localhost:* ]]; then
+    valid_port "${authority#localhost:}"
+    return
+  fi
+  valid_host "$authority" || valid_host_port "$authority"
+}
+
 # "host:port" with a domain, an IPv4 address or a bracketed IPv6 address.
 valid_host_port() {
   local value="$1" host port
@@ -104,6 +117,29 @@ port_conflict() {
   done < <(port_owners "$proto" "$port")
   ((${#others[@]} > 0)) || return 1
   printf '%s' "${others[*]}"
+}
+
+# Prints "PORT OWNER" lines for every bound UDP socket on the host using a
+# single `ss` invocation so wide port ranges can be checked quickly.
+udp_listening_ports() {
+  ss -H -lunp 2>/dev/null | awk '
+    {
+      col = ($1 ~ /^(udp|tcp|raw|icmp)/) ? 5 : 4
+      local_addr = $col
+      if (local_addr !~ /:/) next
+      sub(/.*:/, "", local_addr)
+      if (local_addr !~ /^[0-9]+$/) next
+      rest = $0
+      found = 0
+      while (match(rest, /\("[^"]+"/)) {
+        owner = substr(rest, RSTART + 2, RLENGTH - 3)
+        print local_addr, owner
+        found = 1
+        rest = substr(rest, RSTART + RLENGTH)
+      }
+      if (!found) print local_addr, "?"
+    }
+  '
 }
 
 random_free_port() {

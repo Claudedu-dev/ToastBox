@@ -298,3 +298,12 @@ assert_profile() {
     [[ "$output" == *"--tcp-keepalive-idle"*"--reset-sockopt"* ]]
   done
 }
+
+@test "sockopt: Hy2 inbound does not inherit TCP sockopt overrides" {
+  sample_hy2
+  CFG_SOCKOPT="$(profile)"
+  run xray_render
+  [ "$status" -eq 0 ]
+  [ "$(jq -c '.inbounds[0].streamSettings.sockopt' <<<"$output")" = "$(profile)" ]
+  [ "$(jq '.inbounds[2].streamSettings | has("sockopt")' <<<"$output")" = "false" ]
+}

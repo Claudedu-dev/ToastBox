@@ -43,6 +43,14 @@ gen_short_id() {
   openssl rand -hex 8
 }
 
+valid_hy2_password() {
+  [[ -n "$1" && "$1" != *[[:space:]]* ]]
+}
+
+gen_hy2_password() {
+  openssl rand -base64 24 | tr '+/' '-_' | tr -d '=\n'
+}
+
 gen_uuid() {
   local uuid=""
   case "$CFG_CORE" in
@@ -104,6 +112,27 @@ ensure_credentials() {
       CFG_SS_PASSWORD="$(gen_ss_password "$CFG_SS_METHOD")"
     fi
   fi
+  if [[ "$CFG_HY2" == "1" ]]; then
+    valid_hy2_password "$CFG_HY2_PASSWORD" || CFG_HY2_PASSWORD="$(gen_hy2_password)"
+    if [[ "$CFG_HY2_OBFS" == "salamander" ]]; then
+      valid_hy2_password "$CFG_HY2_OBFS_PASSWORD" || CFG_HY2_OBFS_PASSWORD="$(gen_hy2_password)"
+    else
+      CFG_HY2_OBFS_PASSWORD=""
+    fi
+    if [[ "$CFG_HY2_TLS" == "self-signed" ]]; then
+      if [[ -z "$CFG_HY2_CERT" || -z "$CFG_HY2_KEY" ]] ||
+        ! tls_validate_pem_pair "$CFG_HY2_CERT" "$CFG_HY2_KEY"; then
+        tls_generate_self_signed "$CFG_SERVER_ADDR" "$CFG_HY2_SNI" || die err_hy2_tls_gen
+        CFG_HY2_CERT="$TLS_CERT_PEM"
+        CFG_HY2_KEY="$TLS_KEY_PEM"
+        CFG_HY2_CERT_SHA256="$TLS_CERT_SHA256"
+      elif [[ -z "$CFG_HY2_CERT_SHA256" ]]; then
+        CFG_HY2_CERT_SHA256="$(tls_cert_sha256_pem "$CFG_HY2_CERT")" || die err_hy2_tls_gen
+      fi
+    elif [[ -z "$CFG_HY2_CERT_SHA256" && -n "$CFG_HY2_CERT" ]]; then
+      CFG_HY2_CERT_SHA256="$(tls_cert_sha256_pem "$CFG_HY2_CERT")" || die err_hy2_tls_invalid
+    fi
+  fi
 }
 
 clear_credentials() {
@@ -112,4 +141,6 @@ clear_credentials() {
   CFG_REALITY_PUBLIC_KEY=""
   CFG_REALITY_SHORT_ID=""
   CFG_SS_PASSWORD=""
+  CFG_HY2_PASSWORD=""
+  CFG_HY2_OBFS_PASSWORD=""
 }

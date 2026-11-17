@@ -6,8 +6,34 @@ TB_OS_ID=""
 TB_OS_VERSION=""
 TB_INTERACTIVE=0
 
+TB_LOCK_HELD=0
+
 require_root() {
   [[ "$(id -u)" -eq 0 ]] || die err_root
+}
+
+tb_acquire_lock() {
+  local dir
+  [[ "$TB_LOCK_HELD" == "1" ]] && return 0
+  dir="$(dirname "$TB_LOCK_FILE")"
+  if [[ ! -d "$dir" ]]; then
+    install -d -m 700 "$dir" || die err_lock_open "$TB_LOCK_FILE"
+  fi
+  exec 9>"$TB_LOCK_FILE" || die err_lock_open "$TB_LOCK_FILE"
+  if has_cmd flock; then
+    flock -w "${TOASTBOX_LOCK_TIMEOUT:-60}" 9 || {
+      exec 9>&- 2>/dev/null || true
+      die err_lock_busy "$TB_LOCK_FILE"
+    }
+  fi
+  TB_LOCK_HELD=1
+}
+
+tb_release_lock() {
+  if [[ "$TB_LOCK_HELD" == "1" ]]; then
+    exec 9>&- 2>/dev/null || true
+    TB_LOCK_HELD=0
+  fi
 }
 
 # Reads ID / VERSION_ID / ID_LIKE without polluting our own namespace.
@@ -166,7 +192,17 @@ confirm() {
 # systemd
 # ---------------------------------------------------------------------------
 
+systemd_running() { [[ -d /run/systemd/system ]] && has_cmd systemctl; }
+
 service_is_active() { systemctl -q is-active "$1" 2>/dev/null; }
+
+service_unit_exists() {
+  systemd_running && systemctl cat "$1" >/dev/null 2>&1
+}
+
+service_unit_prop() {
+  systemctl show -p "$2" --value "$1" 2>/dev/null || true
+}
 
 # Restarts SERVICE and waits until it has stayed up for a moment: a core
 # that rejects its configuration exits right after start.

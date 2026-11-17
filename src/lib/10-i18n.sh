@@ -95,15 +95,67 @@ TB_MSG_EN[err_unknown_arg]='Unknown argument: %s (see --help).'
 TB_MSG_EN[err_invalid_option]='Invalid value for %s: "%s"'
 TB_MSG_EN[err_invalid_value]='Invalid value: "%s"'
 TB_MSG_EN[warn_invalid_input]='"%s" is not valid, please try again.'
-TB_MSG_EN[err_protocols]='Invalid protocol list "%s". Use vless, ss or vless,ss.'
+TB_MSG_EN[err_protocols]='Invalid protocol list "%s". Use vless, ss, hy2, both, all or comma-separated combinations.'
 TB_MSG_EN[err_protocol_disabled]='Protocol "%s" is not enabled on this node.'
-TB_MSG_EN[err_format]='Unknown format "%s". Use text, links, json, xray or sing-box.'
+TB_MSG_EN[err_format]='Unknown format "%s". Use text, links, json, xray, sing-box or hysteria2.'
+TB_MSG_EN[err_format_requires_hy2]='Format "hysteria2" requires Hysteria 2 to be enabled and selected.'
 TB_MSG_EN[err_aborted]='Aborted. Nothing was changed. (Use --yes to confirm without a prompt.)'
 TB_MSG_EN[err_sockopt_core]='Custom TCP sockopt is supported only by Xray, not %s. Use install --reset-sockopt to clear it before switching cores.'
 TB_MSG_EN[err_sockopt_command]='TCP sockopt options are only accepted with install; update and rotate reuse the saved settings.'
+TB_MSG_EN[err_hy2_command]='Hysteria 2 options are only accepted with install; update and rotate reuse the saved settings.'
+TB_MSG_EN[err_hy2_cert_with_self_signed]='--hy2-cert and --hy2-key cannot be combined with --hy2-tls self-signed.'
+TB_MSG_EN[err_hy2_cert_pair_required]='--hy2-cert and --hy2-key must be passed together.'
+TB_MSG_EN[err_hy2_renew_not_self_signed]='--hy2-renew-cert can only be used with --hy2-tls self-signed.'
+TB_MSG_EN[err_hy2_files_required]='Hysteria 2 TLS mode "files" requires --hy2-cert and --hy2-key.'
+TB_MSG_EN[err_hy2_cert_pair]='Certificate %s and private key %s are unreadable, expired or do not match.'
+TB_MSG_EN[err_hy2_sni_required]='Could not determine the Hysteria 2 certificate hostname; pass it with --hy2-sni.'
+TB_MSG_EN[err_hy2_cert_sni_mismatch]='The Hysteria 2 certificate is not valid for "%s".'
+TB_MSG_EN[err_hy2_tls_invalid]='The saved Hysteria 2 certificate or key is invalid or expired; re-import with --hy2-cert and --hy2-key.'
+TB_MSG_EN[err_hy2_tls_gen]='Could not generate a self-signed TLS certificate for Hysteria 2.'
+TB_MSG_EN[err_hy2_not_enabled]='Hysteria 2 options require Hysteria 2 (hy2) to be included in --protocols.'
+TB_MSG_EN[err_hy2_hook_not_self_signed]='--hy2-cert-hook certbot cannot be used with --hy2-tls self-signed.'
+TB_MSG_EN[err_hy2_cert_sources_missing]='No external certificate source paths are recorded for Hysteria 2; import with --hy2-cert and --hy2-key first.'
+TB_MSG_EN[err_hy2_hook_certbot_paths]='Certbot deploy hook requires matching %s/<lineage>/fullchain.pem and privkey.pem source files.'
+TB_MSG_EN[err_hy2_foreign_hook]='Refusing to overwrite an unmanaged deploy hook at %s.'
+TB_MSG_EN[err_hy2_hook_needs_self]='Enabling --hy2-cert-hook requires a persistent toastbox binary at %s; run install using toastbox.sh first.'
+TB_MSG_EN[err_hy2_hook_install]='Could not install the Certbot deploy hook at %s.'
+TB_MSG_EN[err_hy2_acme_with_files]='ACME automatic issuance cannot be combined with --hy2-cert or --hy2-key.'
+TB_MSG_EN[err_hy2_acme_tls_conflict]='ACME flags (--hy2-acme-*) can only be used with --hy2-tls acme.'
+TB_MSG_EN[err_hy2_acme_requires_hook]='ACME automatic issuance requires automatic renewal sync; --hy2-cert-hook none cannot be combined with --hy2-tls acme.'
+TB_MSG_EN[err_hy2_acme_domain_required]='ACME certificate issuance requires a domain name (--hy2-acme-domain or a domain --server-addr).'
+TB_MSG_EN[err_hy2_acme_email_required]='ACME certificate issuance requires an account email address (--hy2-acme-email).'
+TB_MSG_EN[err_hy2_acme_tos_required]='ACME certificate issuance requires accepting the CA Subscriber Agreement (--hy2-acme-agree-tos).'
+TB_MSG_EN[err_hy2_acme_port80_conflict]='Certbot standalone HTTP-01 requires TCP port 80, which conflicts with the configured VLESS or Shadowsocks TCP port 80.'
+TB_MSG_EN[err_hy2_acme_port80_busy]='TCP port 80 is already in use by: %s. Certbot standalone requires port 80 and ToastBox will not stop existing services; use --hy2-cert and --hy2-key to reuse an existing certificate instead.'
+TB_MSG_EN[err_hy2_acme_dns_unresolvable]='Domain %s did not resolve to any IP address in DNS. Point an A/AAAA record to this server before running ACME.'
+TB_MSG_EN[err_hy2_acme_dns_private]='Domain %s resolved only to non-public IP address(es) (%s); public Let'\''s Encrypt HTTP-01 validation requires a public IP.'
+TB_MSG_EN[warn_hy2_acme_dns_mismatch]='Domain %s resolved to %s, which differs from --server-addr %s.'
+TB_MSG_EN[warn_hy2_acme_no_ecdsa_flag]='Installed certbot does not support --key-type ecdsa; continuing with its default key type.'
+TB_MSG_EN[err_hy2_acme_certbot_install]='Could not install certbot automatically.'
+TB_MSG_EN[info_hy2_acme_issuing]='Issuing public TLS certificate for %s via Certbot standalone (lineage %s)...'
+TB_MSG_EN[err_hy2_acme_issue]='Certbot standalone issuance failed for %s; existing node configuration was left untouched.'
+TB_MSG_EN[ok_hy2_acme_issued]='Issued public TLS certificate for %s (lineage %s).'
+TB_MSG_EN[info_hy2_acme_reuse_cert]='Reusing existing valid Certbot certificate for %s (%s).'
+TB_MSG_EN[info_hy2_acme_reuse_system_timer]='Reusing the active system Certbot renewal timer.'
+TB_MSG_EN[ok_hy2_acme_timer_enabled]='Enabled scoped ToastBox renewal timer %s for lineage %s.'
+TB_MSG_EN[err_hy2_acme_timer]='Could not configure the ToastBox Certbot renewal timer.'
+TB_MSG_EN[err_hy2_hop_interval_requires_ports]='--hy2-hop-interval requires UDP port hopping to be enabled with --hy2-hop-ports.'
+TB_MSG_EN[err_hy2_hop_ss_conflict]='UDP port hopping range (%s) overlaps with Shadowsocks UDP port %s.'
+TB_MSG_EN[err_hy2_hop_ports_in_use]='Hysteria 2 hop ports are already in use by: %s'
+TB_MSG_EN[err_hy2_hop_loopback]='Hysteria 2 UDP port hopping is not supported when --listen is a loopback address (%s).'
+TB_MSG_EN[err_hy2_hop_no_backend]='Hysteria 2 UDP port hopping requires nftables (nft) or iptables.'
+TB_MSG_EN[err_hy2_hop_no_cmd]='Hysteria 2 UDP port hopping requires the "%s" command.'
+TB_MSG_EN[err_hy2_hop_apply]='Could not configure Hysteria 2 UDP port-hopping NAT rules.'
+TB_MSG_EN[err_refresh_options]='refresh-cert accepts no installation or show options (only --yes / --lang).'
+TB_MSG_EN[err_refresh_requires_hy2]='Hysteria 2 is not enabled on this node.'
+TB_MSG_EN[err_refresh_requires_files]='refresh-cert requires Hysteria 2 TLS mode "files".'
+TB_MSG_EN[info_hy2_cert_unchanged]='Hysteria 2 certificate chain and key are unchanged; no restart needed.'
+TB_MSG_EN[ok_hy2_cert_refreshed]='Hysteria 2 certificate was refreshed.'
+TB_MSG_EN[err_lock_open]='Could not open operation lock %s.'
+TB_MSG_EN[err_lock_busy]='Another ToastBox operation holds the lock %s.'
 
 TB_MSG_EN[prompt_core]='Core: 1) xray  2) sing-box'
-TB_MSG_EN[prompt_protocols]='Protocols: 1) both  2) VLESS-REALITY-Vision only  3) Shadowsocks 2022 only'
+TB_MSG_EN[prompt_protocols]='Protocols: 1) VLESS+SS  2) VLESS only  3) SS only  4) Hysteria 2 only  5) all three (or comma list)'
 TB_MSG_EN[info_detect_addr]='Detecting the public address of this server...'
 TB_MSG_EN[err_server_addr_required]='Could not detect the public address. Pass it with --server-addr.'
 TB_MSG_EN[prompt_server_addr]='Address clients connect to (IP or domain)'
@@ -129,8 +181,18 @@ TB_MSG_EN[prompt_target_anyway]='Use this target anyway?'
 TB_MSG_EN[err_target_rejected]='The REALITY target was rejected. Choose another one, or pass --skip-target-check to skip the probe.'
 TB_MSG_EN[prompt_ss_port]='Shadowsocks port'
 TB_MSG_EN[prompt_ss_method]='Shadowsocks method: 1) 2022-blake3-aes-128-gcm  2) 2022-blake3-aes-256-gcm  3) 2022-blake3-chacha20-poly1305'
+TB_MSG_EN[prompt_hy2_port]='Hysteria 2 UDP port'
+TB_MSG_EN[prompt_hy2_tls]='Hysteria 2 TLS: 1) self-signed  2) files (import cert & key)  3) acme (Certbot public cert)'
+TB_MSG_EN[prompt_hy2_acme_domain]='Domain name for public ACME certificate (DNS must point to this server)'
+TB_MSG_EN[prompt_hy2_acme_email]='Account email for Let'\''s Encrypt / Certbot expiry notices'
+TB_MSG_EN[prompt_hy2_acme_tos]='Agree to the Let'\''s Encrypt Subscriber Agreement for automatic issuance?'
+TB_MSG_EN[prompt_hy2_cert]='Path to TLS certificate chain PEM'
+TB_MSG_EN[prompt_hy2_key]='Path to TLS private key PEM'
+TB_MSG_EN[prompt_hy2_sni]='Hysteria 2 TLS verification name (SNI)'
+TB_MSG_EN[prompt_hy2_obfs]='Hysteria 2 obfuscation: 1) none  2) salamander'
 TB_MSG_EN[err_no_free_port]='Could not find a free port. Pass one with --ss-port.'
 TB_MSG_EN[err_port_same]='VLESS and Shadowsocks cannot both listen on TCP port %s.'
+TB_MSG_EN[err_port_same_udp]='Hysteria 2 and Shadowsocks cannot both listen on UDP port %s.'
 TB_MSG_EN[err_port_in_use]='Port %s is already in use by: %s'
 TB_MSG_EN[plan_title]='About to deploy:'
 TB_MSG_EN[prompt_proceed]='Proceed?'
@@ -141,14 +203,23 @@ TB_MSG_EN[err_foreign_config]='Kept the existing configuration %s. Re-run with -
 TB_MSG_EN[info_installing_core]='Installing %s from its official source...'
 TB_MSG_EN[err_core_install]='Installing %s failed.'
 TB_MSG_EN[err_core_too_old]='%s %s is too old: ToastBox needs %s or newer. Run "update" to upgrade it.'
+TB_MSG_EN[err_core_version_too_old]='Requested %s %s is too old: ToastBox needs %s or newer.'
+TB_MSG_EN[warn_core_rolled_back]='Restored the previous %s binary.'
 TB_MSG_EN[ok_core_ready]='%s %s is installed.'
 TB_MSG_EN[err_render]='Could not generate the configuration.'
 TB_MSG_EN[err_validate]='%s rejected the generated configuration. Nothing was changed.'
+TB_MSG_EN[err_backup_config]='Could not back up the existing configuration %s.'
+TB_MSG_EN[err_install_config]='Could not write the configuration to %s.'
+TB_MSG_EN[err_rollback_config]='Could not restore %s from backup %s.'
+TB_MSG_EN[err_state_save]='Could not save node state to %s.'
+TB_MSG_EN[err_xray_dynamic_user]='Service %s uses DynamicUser without a static group; refusing to make %s world-readable.'
+TB_MSG_EN[err_xray_service_user]='Service %s is configured with unknown user "%s".'
 TB_MSG_EN[info_restarting]='Restarting %s...'
 TB_MSG_EN[ok_service_running]='%s is running.'
 TB_MSG_EN[err_service_start]='%s failed to start with the new configuration. Recent log:'
 TB_MSG_EN[warn_rolled_back]='Restored the previous configuration from %s.'
 TB_MSG_EN[warn_service_stopped]='%s was not running before this change and has been left stopped.'
+TB_MSG_EN[info_service_kept_stopped]='%s is stopped; configuration updated on disk without starting it.'
 TB_MSG_EN[warn_old_core_restored]='Started the previous %s service again.'
 TB_MSG_EN[err_apply]='The configuration was not applied.'
 TB_MSG_EN[info_fw_opened]='Firewall (ufw): allowed %s'
@@ -162,7 +233,7 @@ TB_MSG_EN[prompt_rotate]='Generate new credentials? Every existing client will s
 TB_MSG_EN[ok_rotated]='New credentials are active.'
 TB_MSG_EN[prompt_uninstall]='Remove %s and this node? (Configuration files are kept.)'
 TB_MSG_EN[prompt_uninstall_purge]='Remove %s, this node and ALL of its configuration, logs and backups?'
-TB_MSG_EN[warn_remove_failed]='Removing %s reported an error; check the output above.'
+TB_MSG_EN[err_remove_failed]='Removing %s failed; node state was kept. Check the output above.'
 TB_MSG_EN[ok_uninstalled]='%s and the ToastBox node were removed.'
 TB_MSG_EN[ok_core_removed]='%s was removed. The node on %s is untouched.'
 TB_MSG_EN[warn_no_qrencode]='qrencode is not available, skipping the QR code.'
@@ -183,10 +254,26 @@ TB_MSG_EN[label_short_id]='Short ID'
 TB_MSG_EN[label_fingerprint]='Fingerprint'
 TB_MSG_EN[label_method]='Method'
 TB_MSG_EN[label_password]='Password'
+TB_MSG_EN[label_tls]='TLS'
+TB_MSG_EN[label_cert_file]='Certificate file'
+TB_MSG_EN[label_cert_hook]='Deploy hook'
+TB_MSG_EN[label_pin_sha256]='Pin SHA-256'
+TB_MSG_EN[label_obfs]='Obfs'
+TB_MSG_EN[label_obfs_password]='Obfs password'
+TB_MSG_EN[label_masquerade]='Masquerade'
+TB_MSG_EN[label_hop_ports]='Hop ports'
+TB_MSG_EN[label_hop_interval]='Hop interval'
+TB_MSG_EN[label_acme_domain]='ACME domain'
+TB_MSG_EN[label_acme_lineage]='ACME lineage'
 TB_MSG_EN[label_link]='Share link:'
 TB_MSG_EN[note_ss_landing]='Note: Shadowsocks has no TLS camouflage. Use it as a landing node behind a relay, not for connections that cross a censoring firewall directly.'
-TB_MSG_EN[note_client_configs]='Client configurations: "show --format xray" or "show --format sing-box". Links only: "show --format links". QR codes: "show --qr".'
+TB_MSG_EN[note_client_configs]='Client configurations: "show --format xray", "show --format sing-box" or "show --format hysteria2". Links only: "show --format links". QR codes: "show --qr".'
+TB_MSG_EN[note_hy2_hop_clients]='Port-hopping clients: Hysteria app/v2.14.0+, Xray 26.11.9+ (udphop), or sing-box 1.11.0+.'
+TB_MSG_EN[note_hy2_hop_random_clients]='Random port-hopping clients: Hysteria app/v2.14.0+, Xray 26.11.9+ (udphop), or sing-box 1.14.0+ (hop_interval_max).'
+TB_MSG_EN[note_hop_no_firewall]='Note: --no-firewall skips ufw only; UDP port-hopping PREROUTING NAT will still be configured.'
+TB_MSG_EN[note_hy2_acme_firewall]='ACME HTTP-01 requires TCP 80 open in both firewall and cloud security group for renewals; certificate refreshes briefly restart %s.'
 TB_MSG_EN[note_firewall]='If the provider has its own firewall / security group, open the ports above there as well.'
+TB_MSG_EN[note_security_group_udp]='Cloud security group UDP ports required: %s'
 
 TB_MSG_EN[menu_items]='  1) Install or reconfigure a node
   2) Show connection details
@@ -196,7 +283,7 @@ TB_MSG_EN[menu_items]='  1) Install or reconfigure a node
   0) Exit'
 TB_MSG_EN[prompt_menu]='Choose'
 
-TB_MSG_EN[usage]='ToastBox %s - VLESS-TCP-REALITY-Vision and Shadowsocks 2022 nodes on Xray or sing-box
+TB_MSG_EN[usage]='ToastBox %s - VLESS-TCP-REALITY-Vision, Shadowsocks 2022 and Hysteria 2 nodes on Xray or sing-box
 
 Usage: toastbox.sh [command] [options]
 
@@ -207,12 +294,14 @@ Commands:
   show         Print connection details, share links or client configs
   update       Upgrade the core and restart the node
   rotate       Generate new UUID / keys / passwords
+  refresh-cert Refresh imported Hysteria 2 certificate & key from saved paths
   uninstall    Remove the core and the node
   help, version
 
 Options for install:
   --core xray|sing-box        Core to use (default: xray)
-  --protocols LIST            vless, ss or vless,ss (default: vless,ss)
+  --protocols LIST            vless, ss, hy2, both (vless,ss), all (all three),
+                              or comma-separated combination (default: vless,ss)
   --server-addr ADDR          Address clients connect to (default: detected)
   --name NAME                 Node name used in share links (default: ToastBox)
   --listen ADDR               Bind to this local address (default: all)
@@ -225,6 +314,20 @@ Options for install:
                               2022-blake3-aes-256-gcm or
                               2022-blake3-chacha20-poly1305
   --ss-network both|tcp|udp   Shadowsocks listen network (default: both)
+  --hy2-port PORT             Hysteria 2 UDP port (default: 443)
+  --hy2-sni NAME              Hysteria 2 TLS verification name (SNI)
+  --hy2-tls MODE              Hysteria 2 TLS: self-signed (default), files, or acme
+  --hy2-cert FILE             Certificate chain PEM to import (--hy2-tls files)
+  --hy2-key FILE              Private key PEM to import (--hy2-tls files)
+  --hy2-cert-hook MODE        certbot (install deploy hook) or none
+  --hy2-acme-domain DOMAIN    Domain for Certbot standalone HTTP-01 (implies acme)
+  --hy2-acme-email EMAIL      Account email for Certbot / CA notifications
+  --hy2-acme-agree-tos        Accept CA Terms of Service for non-interactive ACME
+  --hy2-obfs none|salamander  Hysteria 2 obfuscation (default: none)
+  --hy2-masquerade none|URL   HTTP/3 reverse proxy masquerade URL, or none
+  --hy2-hop-ports LIST|none   UDP port hopping ranges (e.g. 20000-20100,30000)
+  --hy2-hop-interval SEC|MIN-MAX  Port-hop interval in seconds >=5 (default: 30)
+  --hy2-renew-cert            Regenerate the self-signed Hysteria 2 certificate
   --tcp-keepalive-idle SEC    Xray TCP keepalive idle (1..32767 seconds)
   --tcp-keepalive-interval SEC  Xray TCP keepalive interval (1..32767 seconds)
   --tcp-user-timeout MS       Xray TCP user timeout (1..2147483647 milliseconds)
@@ -234,12 +337,12 @@ Options for install:
   --allow-private             Allow relaying to private / loopback addresses
                               (--no-allow-private to undo)
   --core-version VERSION      Install this core version instead of the latest
-  --no-firewall               Do not touch ufw
+  --no-firewall               Do not touch ufw (hop NAT still applies if enabled)
   --overwrite-config          Replace a configuration ToastBox did not write
                               (--yes alone never does)
 
 Options for show:
-  --format FORMAT             text (default), links, json, xray, sing-box
+  --format FORMAT             text (default), links, json, xray, sing-box, hysteria2
   --protocols LIST            Limit the output to these protocols
   --qr                        Also print QR codes (text format)
 
@@ -280,15 +383,67 @@ TB_MSG_ZH[err_unknown_arg]='未知参数：%s（参见 --help）。'
 TB_MSG_ZH[err_invalid_option]='%s 的值无效：“%s”'
 TB_MSG_ZH[err_invalid_value]='无效的值：“%s”'
 TB_MSG_ZH[warn_invalid_input]='“%s”无效，请重新输入。'
-TB_MSG_ZH[err_protocols]='协议列表“%s”无效，可选 vless、ss 或 vless,ss。'
+TB_MSG_ZH[err_protocols]='协议列表“%s”无效，可选 vless、ss、hy2、both、all 或逗号分隔组合。'
 TB_MSG_ZH[err_protocol_disabled]='此节点未启用协议“%s”。'
-TB_MSG_ZH[err_format]='未知格式“%s”，可选 text、links、json、xray 或 sing-box。'
+TB_MSG_ZH[err_format]='未知格式“%s”，可选 text、links、json、xray、sing-box 或 hysteria2。'
+TB_MSG_ZH[err_format_requires_hy2]='格式“hysteria2”要求节点启用并选择了 Hysteria 2 协议。'
 TB_MSG_ZH[err_aborted]='已取消，未做任何更改。（使用 --yes 可跳过确认。）'
 TB_MSG_ZH[err_sockopt_core]='自定义 TCP sockopt 仅支持 Xray，不支持 %s。切换内核前请用 install --reset-sockopt 清除。'
 TB_MSG_ZH[err_sockopt_command]='TCP sockopt 选项仅可用于 install；update 和 rotate 会复用已保存的设置。'
+TB_MSG_ZH[err_hy2_command]='Hysteria 2 选项仅可用于 install；update 和 rotate 会复用已保存的设置。'
+TB_MSG_ZH[err_hy2_cert_with_self_signed]='--hy2-cert 与 --hy2-key 不能与 --hy2-tls self-signed 同时使用。'
+TB_MSG_ZH[err_hy2_cert_pair_required]='--hy2-cert 与 --hy2-key 必须成对提供。'
+TB_MSG_ZH[err_hy2_renew_not_self_signed]='--hy2-renew-cert 仅可用于 --hy2-tls self-signed。'
+TB_MSG_ZH[err_hy2_files_required]='Hysteria 2 的 TLS 模式“files”需要提供 --hy2-cert 和 --hy2-key。'
+TB_MSG_ZH[err_hy2_cert_pair]='证书 %s 与私钥 %s 无法读取、已过期或不匹配。'
+TB_MSG_ZH[err_hy2_sni_required]='无法从证书推断 Hysteria 2 的验证域名，请使用 --hy2-sni 指定。'
+TB_MSG_ZH[err_hy2_cert_sni_mismatch]='Hysteria 2 证书对“%s”无效。'
+TB_MSG_ZH[err_hy2_tls_invalid]='已保存的 Hysteria 2 证书或私钥无效或已过期，请用 --hy2-cert 与 --hy2-key 重新导入。'
+TB_MSG_ZH[err_hy2_tls_gen]='无法为 Hysteria 2 生成自签 TLS 证书。'
+TB_MSG_ZH[err_hy2_not_enabled]='只有在 --protocols 中启用了 Hysteria 2（hy2）时才能使用 Hysteria 2 选项。'
+TB_MSG_ZH[err_hy2_hook_not_self_signed]='--hy2-cert-hook certbot 不能与 --hy2-tls self-signed 模式同时使用。'
+TB_MSG_ZH[err_hy2_cert_sources_missing]='未记录 Hysteria 2 外部证书来源路径，请先使用 --hy2-cert 与 --hy2-key 重新导入。'
+TB_MSG_ZH[err_hy2_hook_certbot_paths]='Certbot 钩子要求证书与私钥来自成对的 %s/<lineage>/fullchain.pem 与 privkey.pem。'
+TB_MSG_ZH[err_hy2_foreign_hook]='拒绝覆盖非 ToastBox 管理的部署钩子：%s'
+TB_MSG_ZH[err_hy2_hook_needs_self]='启用 --hy2-cert-hook 需要先将持久化入口安装到 %s；请先使用单文件 toastbox.sh 执行安装。'
+TB_MSG_ZH[err_hy2_hook_install]='无法安装 Certbot 部署钩子：%s'
+TB_MSG_ZH[err_hy2_acme_with_files]='ACME 自动签发模式不能与 --hy2-cert 或 --hy2-key 同时使用。'
+TB_MSG_ZH[err_hy2_acme_tls_conflict]='ACME 参数（--hy2-acme-*）只能与 --hy2-tls acme 配合使用。'
+TB_MSG_ZH[err_hy2_acme_requires_hook]='ACME 自动签发需要自动续期同步，--hy2-cert-hook none 不能与 --hy2-tls acme 同时使用。'
+TB_MSG_ZH[err_hy2_acme_domain_required]='ACME 自动签发需要提供域名（请指定 --hy2-acme-domain 或域名形式的 --server-addr）。'
+TB_MSG_ZH[err_hy2_acme_email_required]='ACME 自动签发需要提供账户邮箱（--hy2-acme-email）。'
+TB_MSG_ZH[err_hy2_acme_tos_required]='ACME 自动签发需要明确同意 CA 服务条款（--hy2-acme-agree-tos）。'
+TB_MSG_ZH[err_hy2_acme_port80_conflict]='Certbot standalone HTTP-01 需要占用 TCP 80 端口，与已配置的 VLESS 或 Shadowsocks TCP 80 端口冲突。'
+TB_MSG_ZH[err_hy2_acme_port80_busy]='TCP 80 端口已被占用：%s。Certbot standalone 验证需要空闲的 80 端口，ToastBox 不会自动停止现有服务；若同机已有网站，请改用 --hy2-cert 与 --hy2-key 导入已有证书。'
+TB_MSG_ZH[err_hy2_acme_dns_unresolvable]='域名 %s 在 DNS 中无法解析到任何 IP 地址，请先将 A/AAAA 记录指向本服务器后再使用 ACME。'
+TB_MSG_ZH[err_hy2_acme_dns_private]='域名 %s 仅解析到非公网 IP（%s）；Let'\''s Encrypt HTTP-01 公网验证要求解析到公网 IP。'
+TB_MSG_ZH[warn_hy2_acme_dns_mismatch]='域名 %s 解析结果为 %s，与 --server-addr（%s）不一致。'
+TB_MSG_ZH[warn_hy2_acme_no_ecdsa_flag]='当前 certbot 版本不支持 --key-type ecdsa 参数，将继续使用其默认密钥类型。'
+TB_MSG_ZH[err_hy2_acme_certbot_install]='无法自动安装 certbot。'
+TB_MSG_ZH[info_hy2_acme_issuing]='正在通过 Certbot standalone 为 %s 申请公共 TLS 证书（lineage %s）……'
+TB_MSG_ZH[err_hy2_acme_issue]='Certbot standalone 为 %s 申请证书失败；已保留现有可用节点配置。'
+TB_MSG_ZH[ok_hy2_acme_issued]='已为 %s 签发公共 TLS 证书（lineage %s）。'
+TB_MSG_ZH[info_hy2_acme_reuse_cert]='复用已有的有效 Certbot 证书：%s（%s）。'
+TB_MSG_ZH[info_hy2_acme_reuse_system_timer]='检测到系统已有运行中的 Certbot 续期定时器，直接复用。'
+TB_MSG_ZH[ok_hy2_acme_timer_enabled]='已为 %s（lineage %s）启用 ToastBox 限定范围续期定时器。'
+TB_MSG_ZH[err_hy2_acme_timer]='配置 ToastBox Certbot 续期定时器失败。'
+TB_MSG_ZH[err_hy2_hop_interval_requires_ports]='--hy2-hop-interval 需要同时或事先通过 --hy2-hop-ports 开启端口跳跃。'
+TB_MSG_ZH[err_hy2_hop_ss_conflict]='UDP 端口跳跃范围（%s）与 Shadowsocks UDP 端口 %s 冲突。'
+TB_MSG_ZH[err_hy2_hop_ports_in_use]='Hysteria 2 跳跃端口已被占用：%s'
+TB_MSG_ZH[err_hy2_hop_loopback]='监听在回环地址（%s）时不支持 Hysteria 2 UDP 端口跳跃。'
+TB_MSG_ZH[err_hy2_hop_no_backend]='Hysteria 2 UDP 端口跳跃需要 nftables（nft）或 iptables。'
+TB_MSG_ZH[err_hy2_hop_no_cmd]='Hysteria 2 UDP 端口跳跃需要“%s”命令。'
+TB_MSG_ZH[err_hy2_hop_apply]='配置 Hysteria 2 UDP 端口跳跃 NAT 规则失败。'
+TB_MSG_ZH[err_refresh_options]='refresh-cert 不接受安装或展示参数（仅支持 --yes / --lang）。'
+TB_MSG_ZH[err_refresh_requires_hy2]='此节点未启用 Hysteria 2。'
+TB_MSG_ZH[err_refresh_requires_files]='refresh-cert 仅适用于 Hysteria 2 的 files 证书模式。'
+TB_MSG_ZH[info_hy2_cert_unchanged]='Hysteria 2 证书链与私钥内容未变化，无需重启。'
+TB_MSG_ZH[ok_hy2_cert_refreshed]='Hysteria 2 证书已刷新。'
+TB_MSG_ZH[err_lock_open]='无法打开操作锁 %s。'
+TB_MSG_ZH[err_lock_busy]='另一项 ToastBox 操作正在持有锁 %s。'
 
 TB_MSG_ZH[prompt_core]='内核：1) xray  2) sing-box'
-TB_MSG_ZH[prompt_protocols]='协议：1) 两者都部署  2) 仅 VLESS-REALITY-Vision  3) 仅 Shadowsocks 2022'
+TB_MSG_ZH[prompt_protocols]='协议：1) VLESS+SS  2) 仅 VLESS  3) 仅 SS  4) 仅 Hysteria 2  5) 三者全部（或逗号分隔）'
 TB_MSG_ZH[info_detect_addr]='正在检测本机公网地址……'
 TB_MSG_ZH[err_server_addr_required]='无法检测公网地址，请用 --server-addr 指定。'
 TB_MSG_ZH[prompt_server_addr]='客户端连接所用的地址（IP 或域名）'
@@ -313,8 +468,18 @@ TB_MSG_ZH[prompt_target_anyway]='仍然使用这个目标站？'
 TB_MSG_ZH[err_target_rejected]='REALITY 目标站未通过检查。请换一个，或使用 --skip-target-check 跳过探测。'
 TB_MSG_ZH[prompt_ss_port]='Shadowsocks 端口'
 TB_MSG_ZH[prompt_ss_method]='Shadowsocks 加密方式：1) 2022-blake3-aes-128-gcm  2) 2022-blake3-aes-256-gcm  3) 2022-blake3-chacha20-poly1305'
+TB_MSG_ZH[prompt_hy2_port]='Hysteria 2 UDP 端口'
+TB_MSG_ZH[prompt_hy2_tls]='Hysteria 2 TLS：1) 自签证书（self-signed）  2) 导入证书文件（files）  3) Certbot 自动申请公共证书（acme）'
+TB_MSG_ZH[prompt_hy2_acme_domain]='用于 ACME 公共证书的域名（需提前解析到本服务器）'
+TB_MSG_ZH[prompt_hy2_acme_email]='用于 Let'\''s Encrypt / Certbot 通知的邮箱'
+TB_MSG_ZH[prompt_hy2_acme_tos]='是否同意 Let'\''s Encrypt 服务条款以自动申请公共证书？'
+TB_MSG_ZH[prompt_hy2_cert]='TLS 证书链 PEM 文件路径'
+TB_MSG_ZH[prompt_hy2_key]='TLS 私钥 PEM 文件路径'
+TB_MSG_ZH[prompt_hy2_sni]='Hysteria 2 TLS 证书验证名称（SNI）'
+TB_MSG_ZH[prompt_hy2_obfs]='Hysteria 2 混淆：1) 无（none）  2) salamander'
 TB_MSG_ZH[err_no_free_port]='找不到空闲端口，请用 --ss-port 指定。'
 TB_MSG_ZH[err_port_same]='VLESS 和 Shadowsocks 不能同时监听 TCP 端口 %s。'
+TB_MSG_ZH[err_port_same_udp]='Hysteria 2 和 Shadowsocks 不能同时监听 UDP 端口 %s。'
 TB_MSG_ZH[err_port_in_use]='端口 %s 已被占用：%s'
 TB_MSG_ZH[plan_title]='即将部署：'
 TB_MSG_ZH[prompt_proceed]='继续？'
@@ -325,14 +490,23 @@ TB_MSG_ZH[err_foreign_config]='已保留现有配置 %s。如需替换，请加�
 TB_MSG_ZH[info_installing_core]='正在从官方渠道安装 %s……'
 TB_MSG_ZH[err_core_install]='安装 %s 失败。'
 TB_MSG_ZH[err_core_too_old]='%s %s 版本过旧：ToastBox 需要 %s 或更高版本。请执行 update 升级。'
+TB_MSG_ZH[err_core_version_too_old]='指定的 %s %s 版本过旧：ToastBox 需要 %s 或更高版本。'
+TB_MSG_ZH[warn_core_rolled_back]='已恢复之前的 %s 二进制文件。'
 TB_MSG_ZH[ok_core_ready]='%s %s 已安装。'
 TB_MSG_ZH[err_render]='无法生成配置。'
 TB_MSG_ZH[err_validate]='%s 未通过对生成配置的校验，未做任何更改。'
+TB_MSG_ZH[err_backup_config]='无法备份现有配置 %s。'
+TB_MSG_ZH[err_install_config]='无法将配置写入 %s。'
+TB_MSG_ZH[err_rollback_config]='无法恢复 %s（备份：%s）。'
+TB_MSG_ZH[err_state_save]='无法将节点状态保存到 %s。'
+TB_MSG_ZH[err_xray_dynamic_user]='服务 %s 启用了 DynamicUser 且没有静态用户组，拒绝将 %s 设为所有用户可读。'
+TB_MSG_ZH[err_xray_service_user]='服务 %s 配置了不存在的用户“%s”。'
 TB_MSG_ZH[info_restarting]='正在重启 %s……'
 TB_MSG_ZH[ok_service_running]='%s 正在运行。'
 TB_MSG_ZH[err_service_start]='%s 使用新配置启动失败。最近的日志：'
 TB_MSG_ZH[warn_rolled_back]='已从 %s 恢复之前的配置。'
 TB_MSG_ZH[warn_service_stopped]='%s 在本次更改之前并未运行，现已保持停止状态。'
+TB_MSG_ZH[info_service_kept_stopped]='%s 当前处于停止状态，已仅更新磁盘配置与状态。'
 TB_MSG_ZH[warn_old_core_restored]='已重新启动之前的 %s 服务。'
 TB_MSG_ZH[err_apply]='配置未生效。'
 TB_MSG_ZH[info_fw_opened]='防火墙（ufw）：已放行 %s'
@@ -346,7 +520,7 @@ TB_MSG_ZH[prompt_rotate]='重新生成凭据？所有现有客户端在重新配
 TB_MSG_ZH[ok_rotated]='新凭据已生效。'
 TB_MSG_ZH[prompt_uninstall]='移除 %s 和此节点？（配置文件会保留。）'
 TB_MSG_ZH[prompt_uninstall_purge]='移除 %s、此节点及其全部配置、日志和备份？'
-TB_MSG_ZH[warn_remove_failed]='移除 %s 时出现错误，请查看上方输出。'
+TB_MSG_ZH[err_remove_failed]='移除 %s 失败，已保留节点状态，请查看上方输出。'
 TB_MSG_ZH[ok_uninstalled]='%s 和 ToastBox 节点已移除。'
 TB_MSG_ZH[ok_core_removed]='%s 已移除，运行在 %s 上的节点不受影响。'
 TB_MSG_ZH[warn_no_qrencode]='qrencode 不可用，跳过二维码。'
@@ -367,10 +541,26 @@ TB_MSG_ZH[label_short_id]='Short ID'
 TB_MSG_ZH[label_fingerprint]='指纹'
 TB_MSG_ZH[label_method]='加密方式'
 TB_MSG_ZH[label_password]='密码'
+TB_MSG_ZH[label_tls]='TLS'
+TB_MSG_ZH[label_cert_file]='证书文件'
+TB_MSG_ZH[label_cert_hook]='部署钩子'
+TB_MSG_ZH[label_pin_sha256]='证书指纹（SHA-256）'
+TB_MSG_ZH[label_obfs]='混淆'
+TB_MSG_ZH[label_obfs_password]='混淆密码'
+TB_MSG_ZH[label_masquerade]='网页伪装'
+TB_MSG_ZH[label_hop_ports]='跳跃端口'
+TB_MSG_ZH[label_hop_interval]='跳跃间隔'
+TB_MSG_ZH[label_acme_domain]='ACME 域名'
+TB_MSG_ZH[label_acme_lineage]='ACME 谱系'
 TB_MSG_ZH[label_link]='分享链接：'
 TB_MSG_ZH[note_ss_landing]='注意：Shadowsocks 没有 TLS 伪装，适合作为中转之后的落地节点，不适合直接穿越审查防火墙。'
-TB_MSG_ZH[note_client_configs]='客户端配置：show --format xray 或 show --format sing-box；仅链接：show --format links；二维码：show --qr。'
+TB_MSG_ZH[note_client_configs]='客户端配置：show --format xray、show --format sing-box 或 show --format hysteria2；仅链接：show --format links；二维码：show --qr。'
+TB_MSG_ZH[note_hy2_hop_clients]='端口跳跃客户端要求：Hysteria app/v2.14.0+、Xray 26.11.9+（udphop）或 sing-box 1.11.0+。'
+TB_MSG_ZH[note_hy2_hop_random_clients]='随机间隔跳跃客户端要求：Hysteria app/v2.14.0+、Xray 26.11.9+（udphop）或 sing-box 1.14.0+（hop_interval_max）。'
+TB_MSG_ZH[note_hop_no_firewall]='注意：--no-firewall 仅跳过 ufw；若开启端口跳跃，仍会配置必需的 PREROUTING NAT 转发规则。'
+TB_MSG_ZH[note_hy2_acme_firewall]='ACME HTTP-01 自动续期需要防火墙与云安全组均保持放行 TCP 80；证书刷新时会重启 %s（连接短暂中断）。'
 TB_MSG_ZH[note_firewall]='如果服务商另有防火墙 / 安全组，请在那里同样放行上述端口。'
+TB_MSG_ZH[note_security_group_udp]='云厂商安全组需放行的 UDP 端口：%s'
 
 TB_MSG_ZH[menu_items]='  1) 安装或重新配置节点
   2) 查看连接信息
@@ -380,7 +570,7 @@ TB_MSG_ZH[menu_items]='  1) 安装或重新配置节点
   0) 退出'
 TB_MSG_ZH[prompt_menu]='请选择'
 
-TB_MSG_ZH[usage]='ToastBox %s - 基于 Xray 或 sing-box 部署 VLESS-TCP-REALITY-Vision 与 Shadowsocks 2022 节点
+TB_MSG_ZH[usage]='ToastBox %s - 基于 Xray 或 sing-box 部署 VLESS-TCP-REALITY-Vision、Shadowsocks 2022 与 Hysteria 2 节点
 
 用法：toastbox.sh [命令] [选项]
 
@@ -391,12 +581,14 @@ TB_MSG_ZH[usage]='ToastBox %s - 基于 Xray 或 sing-box 部署 VLESS-TCP-REALIT
   show         显示连接信息、分享链接或客户端配置
   update       升级内核并重启节点
   rotate       重新生成 UUID / 密钥 / 密码
+  refresh-cert 从已登记来源刷新 Hysteria 2 证书与私钥
   uninstall    移除内核和节点
   help, version
 
 install 的选项：
   --core xray|sing-box        使用的内核（默认：xray）
-  --protocols LIST            vless、ss 或 vless,ss（默认：vless,ss）
+  --protocols LIST            vless、ss、hy2、both（vless,ss）、all（三者全部），
+                              或逗号分隔组合（默认：vless,ss）
   --server-addr ADDR          客户端连接所用的地址（默认：自动检测）
   --name NAME                 分享链接中的节点名称（默认：ToastBox）
   --listen ADDR               绑定到指定的本机地址（默认：全部）
@@ -409,6 +601,20 @@ install 的选项：
                               2022-blake3-aes-256-gcm 或
                               2022-blake3-chacha20-poly1305
   --ss-network both|tcp|udp   Shadowsocks 监听的网络（默认：both）
+  --hy2-port PORT             Hysteria 2 UDP 端口（默认：443）
+  --hy2-sni NAME              Hysteria 2 TLS 证书验证名称（SNI）
+  --hy2-tls MODE              Hysteria 2 TLS：self-signed（默认）、files 或 acme
+  --hy2-cert FILE             导入的证书链 PEM 文件（--hy2-tls files）
+  --hy2-key FILE              导入的私钥 PEM 文件（--hy2-tls files）
+  --hy2-cert-hook MODE        certbot（安装续期部署钩子）或 none
+  --hy2-acme-domain DOMAIN    Certbot standalone HTTP-01 申请域名（隐含 acme）
+  --hy2-acme-email EMAIL      Certbot / CA 账户通知邮箱
+  --hy2-acme-agree-tos        非交互 ACME 签发时同意 CA 服务条款
+  --hy2-obfs none|salamander  Hysteria 2 混淆方式（默认：none）
+  --hy2-masquerade none|URL   HTTP/3 反向代理伪装 URL，或 none 清除
+  --hy2-hop-ports LIST|none   UDP 端口跳跃范围（如 20000-20100,30000）
+  --hy2-hop-interval SEC|MIN-MAX  端口跳跃间隔（整数秒 >=5，默认 30）
+  --hy2-renew-cert            重新签发自签 Hysteria 2 证书
   --tcp-keepalive-idle SEC    Xray TCP 保活空闲时间（1..32767 秒）
   --tcp-keepalive-interval SEC  Xray TCP 保活探测间隔（1..32767 秒）
   --tcp-user-timeout MS       Xray TCP 用户超时（1..2147483647 毫秒）
@@ -418,12 +624,12 @@ install 的选项：
   --allow-private             允许转发到私有 / 回环地址
                               （--no-allow-private 取消）
   --core-version VERSION      安装指定版本的内核，而不是最新版
-  --no-firewall               不修改 ufw
+  --no-firewall               不修改 ufw（启用跳跃时仍会配置 NAT）
   --overwrite-config          替换并非由 ToastBox 生成的现有配置
                               （仅有 --yes 不会替换）
 
 show 的选项：
-  --format FORMAT             text（默认）、links、json、xray、sing-box
+  --format FORMAT             text（默认）、links、json、xray、sing-box、hysteria2
   --protocols LIST            只输出指定的协议
   --qr                        同时输出二维码（text 格式）
 

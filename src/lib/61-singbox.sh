@@ -20,10 +20,10 @@ singbox_version() {
 }
 
 singbox_setup_repo() {
-  install -d -m 755 /etc/apt/keyrings
+  install -d -m 755 /etc/apt/keyrings || return 1
   tb_download "$TB_SINGBOX_KEY_URL" "$TB_SINGBOX_KEYRING" || die err_download "$TB_SINGBOX_KEY_URL"
-  chmod a+r "$TB_SINGBOX_KEYRING"
-  cat >"$TB_SINGBOX_APT_SOURCE" <<EOF
+  chmod a+r "$TB_SINGBOX_KEYRING" || return 1
+  cat >"$TB_SINGBOX_APT_SOURCE" <<EOF || return 1
 Types: deb
 URIs: $TB_SINGBOX_APT_URL
 Suites: *
@@ -40,7 +40,7 @@ EOF
 # nothing is exposed until ToastBox has replaced that file.
 singbox_install() {
   local version="${1:-}" package="sing-box"
-  singbox_setup_repo
+  singbox_setup_repo || return 1
   apt-get update >&2 || die err_apt_update
   if [[ -n "$version" ]]; then
     # Debian versions use "~" where the release tag has "-".
@@ -53,11 +53,11 @@ singbox_install() {
 singbox_remove() {
   local purge="$1"
   if [[ "$purge" == "1" ]]; then
-    DEBIAN_FRONTEND=noninteractive apt-get purge -y sing-box >&2 || true
+    DEBIAN_FRONTEND=noninteractive apt-get purge -y sing-box >&2 || return 1
     rm -rf "$(dirname "$TB_SINGBOX_CONFIG")" /var/lib/sing-box
     rm -f "$TB_SINGBOX_APT_SOURCE" "$TB_SINGBOX_KEYRING"
   else
-    DEBIAN_FRONTEND=noninteractive apt-get remove -y sing-box >&2 || true
+    DEBIAN_FRONTEND=noninteractive apt-get remove -y sing-box >&2 || return 1
   fi
 }
 
@@ -72,9 +72,12 @@ singbox_install_config() {
   # The temporary name must not end in .json: the service merges every
   # *.json file in this directory.
   tmp="$TB_SINGBOX_CONFIG.toastbox-new"
-  install -d "$dir"
-  install_owned 600 root "$src" "$tmp"
-  mv -f "$tmp" "$TB_SINGBOX_CONFIG"
+  install -d "$dir" || return 1
+  if ! install_owned 600 root root "$src" "$tmp" ||
+    ! mv -f "$tmp" "$TB_SINGBOX_CONFIG"; then
+    rm -f "$tmp"
+    return 1
+  fi
 }
 
 # The unit starts sing-box with `-C /etc/sing-box`, which merges all JSON
@@ -116,7 +119,16 @@ singbox_render() {
     --arg ss_port "$CFG_SS_PORT" \
     --arg ss_method "$CFG_SS_METHOD" \
     --arg ss_password "$CFG_SS_PASSWORD" \
-    --arg ss_network "$CFG_SS_NETWORK" '
+    --arg ss_network "$CFG_SS_NETWORK" \
+    --arg hy2 "$CFG_HY2" \
+    --arg hy2_port "$CFG_HY2_PORT" \
+    --arg hy2_password "$CFG_HY2_PASSWORD" \
+    --arg hy2_cert "$CFG_HY2_CERT" \
+    --arg hy2_key "$CFG_HY2_KEY" \
+    --arg hy2_obfs "$CFG_HY2_OBFS" \
+    --arg hy2_obfs_password "$CFG_HY2_OBFS_PASSWORD" \
+    --arg hy2_masquerade "$CFG_HY2_MASQUERADE" '
+    def pem_lines: sub("\n+$"; "") | split("\n");
     {
       log: {level: "warn", timestamp: true},
       inbounds: [
@@ -149,6 +161,33 @@ singbox_render() {
           # An absent `network` means TCP and UDP.
           + (if $ss_network == "tcp" or $ss_network == "udp" then {network: $ss_network} else {} end)
           + {method: $ss_method, password: $ss_password}
+        else empty end),
+        (if $hy2 == "1" then
+          {
+            type: "hysteria2",
+            tag: "hysteria2",
+            listen: $listen,
+            listen_port: ($hy2_port | tonumber),
+            users: [{name: "toastbox", password: $hy2_password}],
+            tls: {
+              enabled: true,
+              certificate: ($hy2_cert | pem_lines),
+              key: ($hy2_key | pem_lines)
+            }
+          }
+          + (if $hy2_obfs == "salamander" then {
+            obfs: {
+              type: "salamander",
+              password: $hy2_obfs_password
+            }
+          } else {} end)
+          + (if $hy2_masquerade != "" then {
+            masquerade: {
+              type: "proxy",
+              url: $hy2_masquerade,
+              rewrite_host: true
+            }
+          } else {} end)
         else empty end)
       ],
       outbounds: [

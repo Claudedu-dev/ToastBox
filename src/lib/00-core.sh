@@ -19,6 +19,13 @@ TB_SINGBOX_APT_URL="https://deb.sagernet.org/"
 TB_STATE_DIR="${TOASTBOX_STATE_DIR:-/etc/toastbox}"
 TB_STATE_FILE="$TB_STATE_DIR/state.json"
 TB_BACKUP_DIR="$TB_STATE_DIR/backup"
+if [[ -n "${TOASTBOX_LOCK_FILE:-}" ]]; then
+  TB_LOCK_FILE="$TOASTBOX_LOCK_FILE"
+elif [[ -n "${TOASTBOX_STATE_DIR:-}" ]]; then
+  TB_LOCK_FILE="$TB_STATE_DIR.lock"
+else
+  TB_LOCK_FILE="/run/toastbox/operation.lock"
+fi
 TB_XRAY_BIN="${TOASTBOX_XRAY_BIN:-/usr/local/bin/xray}"
 TB_XRAY_CONFIG="${TOASTBOX_XRAY_CONFIG:-/usr/local/etc/xray/config.json}"
 TB_SINGBOX_BIN="${TOASTBOX_SINGBOX_BIN:-/usr/bin/sing-box}"
@@ -26,6 +33,15 @@ TB_SINGBOX_CONFIG="${TOASTBOX_SINGBOX_CONFIG:-/etc/sing-box/config.json}"
 TB_SINGBOX_KEYRING="/etc/apt/keyrings/sagernet.asc"
 TB_SINGBOX_APT_SOURCE="/etc/apt/sources.list.d/sagernet.sources"
 TB_SELF_PATH="${TOASTBOX_SELF_PATH:-/usr/local/bin/toastbox}"
+TB_CERTBOT_LIVE_DIR="${TOASTBOX_CERTBOT_LIVE_DIR:-/etc/letsencrypt/live}"
+TB_CERTBOT_HOOK_PATH="${TOASTBOX_CERTBOT_HOOK_PATH:-/etc/letsencrypt/renewal-hooks/deploy/toastbox-hy2.sh}"
+TB_CERTBOT_HOOK_MARKER="# Managed by ToastBox (hy2-certbot-hook)"
+TB_HY2_HOP_HELPER="${TOASTBOX_HY2_HOP_HELPER:-/usr/local/libexec/toastbox-hy2-hop}"
+TB_HY2_HOP_STATE="${TOASTBOX_HY2_HOP_STATE:-$TB_STATE_DIR/hy2-hop.json}"
+TB_SYSTEMD_DIR="${TOASTBOX_SYSTEMD_DIR:-/etc/systemd/system}"
+TB_HY2_HOP_SERVICE="toastbox-hy2-hop.service"
+TB_HY2_ACME_SERVICE="toastbox-hy2-certbot.service"
+TB_HY2_ACME_TIMER="toastbox-hy2-certbot.timer"
 
 TB_SS_METHODS=(
   "2022-blake3-aes-128-gcm"
@@ -86,6 +102,9 @@ tb_mktemp_dir() {
 }
 
 tb_cleanup() {
+  if declare -F tb_release_lock >/dev/null 2>&1; then
+    tb_release_lock
+  fi
   if [[ -n "$TB_TMP" && -d "$TB_TMP" ]]; then
     rm -rf "$TB_TMP"
   fi
@@ -99,13 +118,13 @@ ver_ge() {
   [[ "$(printf '%s\n%s\n' "$a" "$b" | sort -V | head -n1)" == "$b" ]]
 }
 
-# install_owned MODE GROUP SRC DEST: like install(1), owned by root:GROUP.
+# install_owned MODE OWNER GROUP SRC DEST: like install(1), owned by OWNER:GROUP.
 # Ownership is only set when running as root, which is always the case in
 # production; the test-suite runs unprivileged.
 install_owned() {
-  local mode="$1" group="$2" src="$3" dest="$4"
+  local mode="$1" owner="$2" group="$3" src="$4" dest="$5"
   if [[ "$(id -u)" -eq 0 ]]; then
-    install -m "$mode" -o root -g "$group" "$src" "$dest"
+    install -m "$mode" -o "$owner" -g "$group" "$src" "$dest"
   else
     install -m "$mode" "$src" "$dest"
   fi
