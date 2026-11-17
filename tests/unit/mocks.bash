@@ -27,6 +27,15 @@ EOF
   chmod 755 "$TB_SELF_PATH"
 }
 
+systemctl() {
+  echo "systemctl $*" >>"$MOCK_LOG"
+  case "${1:-}" in
+    enable) [[ -z "${MOCK_SYSTEMCTL_ENABLE_FAILS:-}" ]] ;;
+    daemon-reload | disable | start | stop | restart) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 service_restart_checked() {
   echo "restart $1" >>"$MOCK_LOG"
   [[ -z "${MOCK_RESTART_FAILS:-}" ]]

@@ -124,7 +124,9 @@ setup() { load_toastbox; }
   [ "$(norm_format hysteria2)" = "hysteria2" ]
   [ "$(norm_hy2_tls 1)" = "self-signed" ]
   [ "$(norm_hy2_tls 2)" = "files" ]
-  refute norm_hy2_tls acme
+  [ "$(norm_hy2_tls acme)" = "acme" ]
+  [ "$(norm_hy2_tls 3)" = "acme" ]
+  refute norm_hy2_tls unknown
   [ "$(norm_hy2_obfs 1)" = "none" ]
   [ "$(norm_hy2_obfs 2)" = "salamander" ]
   refute norm_hy2_obfs gecko

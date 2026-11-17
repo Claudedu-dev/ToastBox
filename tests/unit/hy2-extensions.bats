@@ -9,7 +9,8 @@ setup() {
   unset MOCK_RESTART_FAILS MOCK_BUSY_PORT MOCK_PROBE_RC MOCK_DETECTED_ADDR \
     MOCK_CLOCK_UNSYNCED MOCK_FW_BACKEND FAKE_CORE_REJECT FAKE_XRAY_VERSION FAKE_SINGBOX_VERSION \
     MOCK_ANSWERS MOCK_PROBE_FAIL_SNI MOCK_SERVICE_INACTIVE MOCK_REMOVE_FAILS MOCK_NO_IPV6 \
-    MOCK_HY2_HOP_NO_BACKEND MOCK_HY2_HOP_NO_CMD MOCK_HY2_HOP_FAILS TOASTBOX_HY2_HOP_BACKEND
+    MOCK_HY2_HOP_NO_BACKEND MOCK_HY2_HOP_NO_CMD MOCK_HY2_HOP_FAILS TOASTBOX_HY2_HOP_BACKEND \
+    MOCK_SYSTEMCTL_ENABLE_FAILS
 }
 
 state() { jq -r "$1" "$TB_STATE_FILE"; }
@@ -132,7 +133,7 @@ EOF
   [ "$status" -eq 0 ]
   run_toastbox refresh-cert
   [ "$status" -ne 0 ]
-  [[ "$output" == *"source certificate paths"* && "$output" == *"--hy2-cert"* ]]
+  [[ "$output" == *"external certificate source paths"* && "$output" == *"--hy2-cert"* ]]
 
   # Restore source paths, rotate cert files, and simulate state_save failure -> rolls back config & service.
   run_toastbox install -y --hy2-cert "$BATS_TEST_TMPDIR/cert.pem" --hy2-key "$BATS_TEST_TMPDIR/key.pem"
@@ -152,7 +153,7 @@ EOF
     tb_main refresh-cert
   ' _ "$REPO_ROOT"
   [ "$status" -ne 0 ]
-  [[ "$output" == *"Could not write state file"* ]]
+  [[ "$output" == *"Could not save node state to $TB_STATE_FILE"* ]]
   [ "$(state .hy2.cert_sha256)" = "$sha_before" ]
   [ "$(<"$TB_SINGBOX_CONFIG")" = "$cfg_before" ]
   [ "$(grep -c '^restart sing-box$' "$MOCK_LOG")" -eq 2 ]
@@ -572,12 +573,15 @@ EOF
   grep -q 'TB_BUILT=1' "$TB_SELF_PATH"
   grep -q 'cmd_refresh_cert' "$TB_SELF_PATH"
   ! grep -q 'unknown command:' "$TB_SELF_PATH"
-  [[ "$("$TB_SELF_PATH" --lang en --help </dev/null)" == *"refresh-cert"* ]]
+  run env -u TOASTBOX_SOURCE_ONLY "$TB_SELF_PATH" --lang en --help </dev/null
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"refresh-cert"* ]]
 
   # Invoking the deploy hook executes the replaced single-file entrypoint with refresh-cert
   # (in unprivileged/non-systemd unit env it reaches require_root or require_systemd, never unknown command).
-  run env RENEWED_LINEAGE="$live" "$TB_CERTBOT_HOOK_PATH"
+  run env -u TOASTBOX_SOURCE_ONLY RENEWED_LINEAGE="$live" "$TB_CERTBOT_HOOK_PATH"
   [ "$status" -ne 0 ]
+  [ -n "$output" ]
   [[ "$output" != *"unknown command"* && "$output" != *"Unknown option or argument"* ]]
 }
 
@@ -730,7 +734,7 @@ CNF
       -key "$archive/privkey${ver}.pem" -out "$archive/fullchain${ver}.pem" 2>/dev/null
     ln -sfn "../../archive/$lineage/fullchain${ver}.pem" "$live/fullchain.pem"
     ln -sfn "../../archive/$lineage/privkey${ver}.pem" "$live/privkey.pem"
-    RENEWED_LINEAGE="$live" "$TB_CERTBOT_HOOK_PATH"
+    RENEWED_LINEAGE="$live" "$TOASTBOX_CERTBOT_HOOK_PATH"
     exit $?
     ;;
 esac
@@ -795,6 +799,7 @@ EOF
   [ -x "$TB_CERTBOT_HOOK_PATH" ]
   [ -f "$TB_SYSTEMD_DIR/$TB_HY2_ACME_SERVICE" ]
   [ -f "$TB_SYSTEMD_DIR/$TB_HY2_ACME_TIMER" ]
+  grep -Fxq 'systemctl enable --now toastbox-hy2-certbot.timer' "$MOCK_LOG"
   grep -q 'renew --non-interactive --cert-name toastbox-hy2-hy2.example.com' "$TB_SYSTEMD_DIR/$TB_HY2_ACME_SERVICE"
 
   # Client outputs validate via system CA without insecure/pinSHA256.
@@ -817,6 +822,20 @@ EOF
   [ ! -s "$cb_log" ]
   [ "$(state .hy2.cert_sha256)" = "$sha1" ]
   [ "$(state .hy2.password)" = "$pw1" ]
+
+  # A failed timer enable must roll back an existing working node.
+  local before_timer_state before_timer_config
+  before_timer_state="$(<"$TB_STATE_FILE")"
+  before_timer_config="$(<"$TB_SINGBOX_CONFIG")"
+  : >"$MOCK_LOG"
+  export MOCK_SYSTEMCTL_ENABLE_FAILS=1
+  run_toastbox install -y --hy2-port 9443
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Could not configure the ToastBox Certbot renewal timer."* ]]
+  grep -Fxq 'systemctl enable --now toastbox-hy2-certbot.timer' "$MOCK_LOG"
+  [ "$(<"$TB_STATE_FILE")" = "$before_timer_state" ]
+  [ "$(<"$TB_SINGBOX_CONFIG")" = "$before_timer_config" ]
+  unset MOCK_SYSTEMCTL_ENABLE_FAILS
 
   # 6. Scoped certbot renew invokes hook -> updates config & SHA-256 while preserving password.
   run "$acmebin/certbot" renew --non-interactive --cert-name toastbox-hy2-hy2.example.com

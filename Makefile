@@ -25,6 +25,6 @@ fmt:
 	shfmt -i 2 -ci -w src scripts tests/e2e tests/unit/mocks.bash tests/fixtures
 
 test:
-	bats tests/unit
+	bats --print-output-on-failure tests/unit
 
 check: lint test
