@@ -5074,7 +5074,7 @@ resolve_params() {
     hy2_hop_contains_port "$CFG_HY2_HOP_PORTS" "$CFG_SS_PORT"; then
     die err_hy2_hop_ss_conflict "$CFG_SS_PORT" "$CFG_HY2_HOP_PORTS"
   fi
-  if [[ "$CFG_HY2" == "1" && ( "$TB_HY2_ACME_NEED_ISSUE" == "1" || ( "$CFG_HY2_ACME" == "1" && "$CFG_HY2_CERTBOT_HOOK" == "1" ) ) ]]; then
+  if [[ "$CFG_HY2" == "1" && ("$TB_HY2_ACME_NEED_ISSUE" == "1" || ("$CFG_HY2_ACME" == "1" && "$CFG_HY2_CERTBOT_HOOK" == "1")) ]]; then
     if [[ "$CFG_VLESS" == "1" && "$CFG_VLESS_PORT" == "80" ]] ||
       { [[ "$CFG_SS" == "1" && "$CFG_SS_PORT" == "80" && "$CFG_SS_NETWORK" != "udp" ]]; }; then
       die err_hy2_acme_port80_conflict
