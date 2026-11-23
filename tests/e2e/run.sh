@@ -506,7 +506,7 @@ if [[ "$core" == "xray" ]]; then
   SSL_CERT_FILE="$work/ca.crt" check_protocol xhttp xray
   tb show --format xray --protocols xhttp |
     jq '.outbounds = [(.outbounds[] | select(.tag == "vless-ws-keepalive")), (.outbounds[] | select(.tag != "vless-ws-keepalive"))]' \
-    >"$work/xhttp-ws-client.json"
+      >"$work/xhttp-ws-client.json"
   SSL_CERT_FILE="$work/ca.crt" start_client xray xhttp "$work/xhttp-ws-client.json" || fail "xhttp-ws client did not start"
   [[ "$(through_proxy "$probe_url" || true)" == "204" ]] || fail "xhttp-ws failed to relay HTTP 204"
   stop_client
