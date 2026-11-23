@@ -124,6 +124,7 @@ make_xhttp_cert_files() {
   CFG_SS=0
   sample_xhttp
   CFG_SERVER_ADDR="edge.example.com"
+  CFG_XHTTP_HOST="edge.example.com"
   CFG_XHTTP_WS=1
   state_save
   local before
@@ -412,7 +413,9 @@ make_xhttp_cert_files() {
   [[ "$output" == *"XHTTP WS default port 8443/tcp is already in use; using fallback port 2053/tcp."* ]]
   unset MOCK_BUSY_PORT
 
-  rm -f "$TB_STATE_FILE"
+  # A node whose state was lost still owns the old config file only by its
+  # ToastBox marker: drop both to model a fresh node on 8443.
+  rm -f "$TB_STATE_FILE" "$TOASTBOX_XRAY_CONFIG"
   : >"$MOCK_LOG"
   run_toastbox install -y --protocols xhttp --xhttp-tls files --xhttp-host edge.example.com \
     --xhttp-port 8443 --xhttp-cert "$cert" --xhttp-key "$key" --xhttp-ws-keepalive
