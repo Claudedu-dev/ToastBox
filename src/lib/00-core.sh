@@ -49,6 +49,25 @@ TB_SS_METHODS=(
   "2022-blake3-chacha20-poly1305"
 )
 
+TB_XHTTP_DEFAULT_PORT=10000
+TB_XHTTP_DEFAULT_PUBLIC_PORT=443
+TB_XHTTP_DEFAULT_WS_PORT=10001
+TB_XHTTP_DEFAULT_WS_FILES_PORT=8443
+TB_XHTTP_DEFAULT_WS_HEARTBEAT=30
+
+TB_XHTTP_MODES=(
+  "auto"
+  "packet-up"
+  "stream-up"
+  "stream-one"
+)
+
+TB_XHTTP_ALPNS=(
+  "h2"
+  "h3"
+  "http/1.1"
+)
+
 # Destinations that a public node should not relay to: loopback, RFC 1918,
 # CGNAT, link-local (cloud metadata lives there), benchmarking, multicast,
 # reserved, and the IPv6 equivalents.

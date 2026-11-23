@@ -2,7 +2,7 @@
 
 [简体中文](README.md) | English
 
-Deploy **VLESS-TCP-REALITY-Vision**, **Shadowsocks 2022** and **Hysteria 2** nodes on Debian / Ubuntu with one command, on either [Xray](https://github.com/XTLS/Xray-core) or [sing-box](https://github.com/SagerNet/sing-box).
+Deploy **VLESS-TCP-REALITY-Vision**, **VLESS-XHTTP** (for Cloudflare CDN plus optional WebSocket keep-alive companion), **Shadowsocks 2022** and **Hysteria 2** nodes on Debian / Ubuntu with one command, on either [Xray](https://github.com/XTLS/Xray-core) or [sing-box](https://github.com/SagerNet/sing-box) (VLESS-XHTTP is Xray-only).
 
 - Cores come from their official sources: [XTLS/Xray-install](https://github.com/XTLS/Xray-install) for Xray, the official APT repository for sing-box.
 - Only the configuration format of the current documentation is written; no deprecated fields.
@@ -18,7 +18,8 @@ Deploy **VLESS-TCP-REALITY-Vision**, **Shadowsocks 2022** and **Hysteria 2** nod
 | Architecture | amd64, arm64 |
 | Privileges | root |
 | Xray | 26.7.11 or newer (the latest is installed by default) |
-| sing-box | 1.12.0 or newer (the latest is installed by default) |
+| sing-box | Server: 1.12.0 or newer (latest installed by default; does not support `--protocols xhttp`); client config (`--format sing-box`): 1.11.0+ |
+| Mihomo client | v1.19.34 or newer (when using XHTTP profiles from `--format mihomo`) |
 
 ## Quick start
 
@@ -33,7 +34,7 @@ Without arguments you get an interactive menu. After a successful deployment the
 sudo toastbox show
 ```
 
-Unattended:
+Unattended (VLESS-REALITY + SS):
 
 ```bash
 sudo bash toastbox.sh install -y \
@@ -42,15 +43,27 @@ sudo bash toastbox.sh install -y \
   --ss-port 28443
 ```
 
+Unattended (VLESS-XHTTP behind Cloudflare CDN + WS keep-alive companion):
+
+```bash
+sudo bash toastbox.sh install -y \
+  --core xray --protocols xhttp \
+  --xhttp-tls none \
+  --xhttp-host edge.example.com \
+  --xhttp-ws-keepalive
+sudo toastbox show --format nginx
+sudo toastbox show --format mihomo
+```
+
 ## Commands
 
 | Command | Purpose |
 | --- | --- |
 | `install` | Deploy a node, or change the settings of an existing one |
-| `show` | Print connection details, share links or client configurations |
+| `show` | Print connection details, share links, Nginx snippets or client configurations |
 | `update` | Upgrade the core and restart the node |
-| `rotate` | Generate a new UUID, REALITY key pair, short ID, Shadowsocks password and Hysteria 2 auth/obfs passwords (keeps TLS certificates) |
-| `refresh-cert` | Re-validate and re-import `--hy2-cert` / `--hy2-key`; restarts the active core when cert or key changes |
+| `rotate` | Generate a new UUID (including XHTTP UUID), REALITY key pair, short ID, Shadowsocks password and Hysteria 2 auth/obfs passwords (keeps paths & TLS certificates) |
+| `refresh-cert` | Re-validate and re-import `--hy2-cert` / `--hy2-key` or `--xhttp-cert` / `--xhttp-key`; restarts the active core when cert or key changes |
 | `uninstall` | Remove the core and the node; `--purge` also deletes configuration, logs and backups |
 
 ### Options for `install`
@@ -58,8 +71,8 @@ sudo bash toastbox.sh install -y \
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `--core xray\|sing-box` | `xray` | Core to use |
-| `--protocols LIST` | `vless,ss` | `vless`, `ss`, `hy2`, `both` (`vless,ss`), `all` (all three), or comma-separated list |
-| `--server-addr ADDR` | detected | IP or domain clients connect to |
+| `--protocols LIST` | `vless,ss` | `vless`, `ss`, `hy2`, `xhttp`, `both` (`vless,ss`), `all` (`vless,ss,hy2`), or comma-separated list |
+| `--server-addr ADDR` | detected | IP or domain clients connect to (XHTTP-only inherits `--xhttp-host` if omitted) |
 | `--name NAME` | `ToastBox` | Node name in share links |
 | `--listen ADDR` | all addresses | Bind to this local address |
 | `--vless-port PORT` | `443` | VLESS port |
@@ -83,6 +96,24 @@ sudo bash toastbox.sh install -y \
 | `--hy2-obfs none\|salamander` | `none` | Optional Salamander obfuscation with generated password |
 | `--hy2-masquerade none\|URL` | none | HTTP/3 reverse proxy masquerade URL, or `none` to clear |
 | `--hy2-renew-cert` | | Explicitly regenerate the self-signed Hysteria 2 certificate |
+| `--xhttp-tls none\|files` | `none` | `none`: plaintext loopback h2c backend for Nginx/ToastWeb; `files`: direct public TLS from PEM files |
+| `--xhttp-listen ADDR` | `127.0.0.1` / all | Bind address (`none` requires a loopback address such as `127.0.0.1` or `::1`) |
+| `--xhttp-port PORT` | `10000` / `443` | XHTTP listen TCP port (`10000` for `none`, `443` for `files`) |
+| `--xhttp-public-port PORT` | `443` | Public HTTPS port clients dial when `--xhttp-tls none` |
+| `--xhttp-host DOMAIN` | domain server addr | Public hostname / SNI (required; inherits domain `--server-addr` when omitted) |
+| `--xhttp-connect-addr ADDR` | matches `--xhttp-host` | Client dial / Cloudflare preferred IP or domain; pass `""` or `none` to clear |
+| `--xhttp-path PATH` | random `/<hex>` | XHTTP request path |
+| `--xhttp-mode MODE` | `auto` | Server XHTTP mode: `auto`, `packet-up`, `stream-up` or `stream-one` |
+| `--xhttp-client-mode MODE` | `packet-up` | Exported client / share link XHTTP mode: `packet-up`, `auto`, `stream-up` or `stream-one` |
+| `--xhttp-alpn MODE` | `h2` | XHTTP client ALPN: `h2`, `h3` or `http/1.1` (`h3` requires a CDN edge such as Cloudflare with HTTP/3 enabled; direct origin connections only listen on TCP) |
+| `--xhttp-cert FILE` | | Certificate chain PEM to import (implies `--xhttp-tls files`) |
+| `--xhttp-key FILE` | | Private key PEM to import (must accompany `--xhttp-cert`) |
+| `--xhttp-cert-hook certbot\|none` | `none` | Install or remove the Certbot renewal deploy hook for `--xhttp-tls files` |
+| `--xhttp-ws-keepalive` | off | Enable companion `vless-ws-keepalive` inbound for long idle connections (`--no-xhttp-ws-keepalive` disables) |
+| `--xhttp-ws-port PORT` | `10001` / `8443` | Companion WS listen port (`10001` for `none`; `8443` for `files`, falling back to `2053` only when the default `8443` conflicts or is busy; explicit/saved custom ports are not moved automatically) |
+| `--xhttp-ws-public-port PORT` | `443` | Public HTTPS port clients dial for WS when `--xhttp-tls none` |
+| `--xhttp-ws-path PATH` | random `/<hex>` | Companion WS request path (cannot overlap `--xhttp-path`) |
+| `--xhttp-ws-heartbeat SEC` | `30` | Server Xray WebSocket `heartbeatPeriod` seconds (`1–3600`; warns above `60` due to Cloudflare's 125s read timeout) |
 | `--tcp-keepalive-idle SEC` | no override | Xray TCP keepalive idle, 1–32767 seconds; `0` clears it |
 | `--tcp-keepalive-interval SEC` | no override | Xray TCP keepalive interval, 1–32767 seconds; `0` clears it |
 | `--tcp-user-timeout MS` | no override | Xray TCP user timeout, 1–2147483647 milliseconds; `0` clears it |
@@ -102,8 +133,10 @@ sudo toastbox show                          # parameters and share links
 sudo toastbox show --qr                     # with QR codes
 sudo toastbox show --format links           # share links only
 sudo toastbox show --format xray            # complete Xray client configuration
-sudo toastbox show --format sing-box        # complete sing-box client configuration
+sudo toastbox show --format sing-box        # complete sing-box client configuration (omits XHTTP)
 sudo toastbox show --format hysteria2       # official Hysteria 2 client configuration
+sudo toastbox show --format mihomo          # complete Clash / Mihomo YAML configuration (includes XHTTP)
+sudo toastbox show --format nginx           # Nginx reverse-proxy location snippets (when --xhttp-tls none)
 sudo toastbox show --format json            # machine-readable (no private keys)
 sudo toastbox show --format xray --protocols hy2   # one protocol only
 ```
@@ -111,6 +144,64 @@ sudo toastbox show --format xray --protocols hy2   # one protocol only
 The client configurations open a proxy on `127.0.0.1:1080` and can be saved and run as they are.
 
 ## Things to know
+
+### VLESS + XHTTP (Cloudflare CDN and WS keep-alive companion)
+
+ToastBox supports two `--protocols xhttp` TLS modes on **Xray** (with a dedicated port and UUID independent from VLESS-REALITY):
+
+- **Reverse-proxy backend (`--xhttp-tls none`, default)**: Xray listens on loopback `127.0.0.1:10000` (plaintext h2c), leaves any host Nginx / ToastWeb files completely untouched, and does not open ufw ports for loopback backends. Run `sudo toastbox show --format nginx` for ready-to-paste `location` blocks inside your HTTPS `server` block:
+  - Keep `location ^~ <path>` (do NOT change it to `=`), because XHTTP `packet-up` appends `/<session>/<seq>`.
+  - If you do not already run Nginx on the host, a complete standalone HTTPS `server` template with `ssl_reject_handshake on;` and Origin CA / public cert placeholders is included below.
+- **Direct TLS files (`--xhttp-tls files`)**: import a **Cloudflare Origin CA** or public CA / Certbot PEM pair via `--xhttp-cert` and `--xhttp-key` when there is no local Nginx. Xray terminates TLS directly on `443/tcp` (and defaults to `8443/tcp` when companion WS is enabled, automatically falling back to `2053/tcp` if the default `8443` conflicts or is already in use; explicitly passed or previously saved custom WS ports are never moved automatically and fail preflight on conflict), sets `tlsSettings.serverName` with `rejectUnknownSni: true` so IP scanners cannot harvest the origin certificate, and manages those ufw ports automatically. Run `sudo toastbox refresh-cert` after replacing PEM files on disk (or pass `--xhttp-cert-hook certbot` for Certbot certificates; refreshes are fault-isolated from Hysteria 2).
+
+Cloudflare dashboard checklist:
+1. Set DNS proxy status to **Proxied** (orange cloud).
+2. Set **SSL/TLS** encryption mode to **Full (strict)**.
+3. Under **Network**, enable **gRPC** and **WebSockets** (and **HTTP/2 to Origin** for `grpc_pass`; an HTTP/1.1 fallback snippet is included in `show --format nginx` comments).
+
+Optional **WebSocket keep-alive companion (`--xhttp-ws-keepalive`)**:
+- Cloudflare enforces a **125-second** Proxy Read Timeout on idle connections, which can drop streaming AI clients (e.g. ChatGPT Desktop) or idle SSH sessions. Enabling `--xhttp-ws-keepalive` starts a companion `vless-ws-keepalive` inbound sharing the XHTTP UUID with server-side `heartbeatPeriod` (default `30`s) sending WebSocket Ping frames.
+- When enabled, `toastbox show --format mihomo` outputs a complete Clash/Mihomo profile with automatic `-fallback` nodes (dialing `--xhttp-host`) when `--xhttp-connect-addr` differs from `--xhttp-host`, and places explicit RFC1918 / loopback / IPv6 ULA/LLA `DIRECT,no-resolve` rules **before** `DST-PORT,22` and OpenAI domain rules so LAN SSH stays local. `show --format xray` also emits routing rules directing OpenAI/ChatGPT domains and `22/tcp` to `vless-ws-keepalive`, and `show --format sing-box` exports the compatible `vless-ws-keepalive` outbound.
+- **Important caveats**:
+  - XHTTP client output targets **Mihomo >= v1.19.34** or recent Xray;
+  - `--xhttp-alpn h3` requires traffic to pass through a CDN edge (e.g. Cloudflare orange-cloud proxy) with HTTP/3 (QUIC) enabled: the origin Xray and Nginx snippet listen on TCP (`h2` / `http/1.1`) only, so dialing the origin directly with `h3` will not connect;
+  - Cloudflare proxies only standard HTTPS port sets (`443`, `2053`, `2083`, `2087`, `2096`, `8443`); Cloudflare edge server restarts during routine releases will still drop active WebSocket connections, so ping/pong keep-alive prevents idle timeouts rather than guaranteeing zero disconnects;
+  - Xray logs a startup deprecation notice for the WebSocket transport itself (officially retained upstream without removal), while `heartbeatPeriod` remains supported in current Xray mainline;
+  - ToastBox retains its existing per-listener ufw model (`files` opens its public TCP ports; `none` skips ufw) rather than syncing Cloudflare origin IP allowlists.
+
+<details>
+<summary>Standalone Nginx HTTPS server template (for hosts without an existing vhost)</summary>
+
+```nginx
+# Reject unknown SNI / bare-IP TLS probes
+server {
+    listen 443 ssl default_server;
+    listen [::]:443 ssl default_server;
+    ssl_reject_handshake on;
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on; # On Nginx < 1.25.1, use "listen 443 ssl http2;" and remove this line
+    server_name edge.example.com;
+
+    ssl_certificate     /etc/ssl/origin.pem;
+    ssl_certificate_key /etc/ssl/origin.key;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+
+    # Paste output from `sudo toastbox show --format nginx` here:
+    # location ^~ /your-xhttp-path { ... }
+    # location = /your-ws-path { ... }
+
+    location / {
+        return 404;
+    }
+}
+```
+
+</details>
 
 ### Choosing a REALITY target
 
@@ -186,7 +277,7 @@ sudo toastbox install -y --no-firewall \
 The options are stored in the `sockopt` object of `state.json` and replayed by later `install` runs (without these flags), `update` and `rotate`. Changing socket settings does not replace credentials; `rotate` still rotates them as before.
 
 - New nodes and old state files without `sockopt` get no overrides, keeping core / system defaults. Hand-edited server JSON is not imported automatically; enter those values once with these flags.
-- Only Xray TCP inbounds are affected: VLESS-REALITY and the TCP part of SS TCP or TCP+UDP. UDP-only SS gets no socket overrides. Outbounds, client configurations and host `sysctl` are unchanged.
+- Only public Xray TCP inbounds are affected: VLESS-REALITY, XHTTP in `files` mode (plus its companion WS), and the TCP part of SS TCP or TCP+UDP. Loopback XHTTP (`none`) and UDP-only SS get no socket overrides. Outbounds, client configurations and host `sysctl` are unchanged.
 - Keepalive values are in seconds; user timeout is in milliseconds. `tcpUserTimeout` only takes effect on Linux. Negative, fractional, non-numeric and out-of-range values are rejected.
 - Changing one value preserves the others; `0` removes that override. `--reset-sockopt` clears everything before applying explicit values from the same command, regardless of argument order.
 - sing-box does not accept these Xray-specific settings. Switching cores with custom settings is refused; use `install --core sing-box --reset-sockopt` to explicitly clear them and switch.
@@ -213,7 +304,7 @@ Without `--server-addr`, the script looks at the address of the default route fi
 | `/usr/local/libexec/toastbox-hy2-hop` | Standalone UDP port-hopping NAT helper script |
 | `/etc/systemd/system/toastbox-hy2-hop.service` | Systemd unit (plus core service drop-in) applying hop NAT across reboots |
 | `/etc/systemd/system/toastbox-hy2-certbot.timer` | Scoped renewal timer (plus `.service`) created when no shared system Certbot timer is active |
-| `/etc/letsencrypt/renewal-hooks/deploy/toastbox-hy2.sh` | Certbot deploy hook invoking `refresh-cert` on renewal (with `--hy2-cert-hook certbot` or `acme`) |
+| `/etc/letsencrypt/renewal-hooks/deploy/toastbox-hy2.sh` | Certbot deploy hook invoking `refresh-cert` on renewal (with `--hy2-cert-hook certbot`, `--xhttp-cert-hook certbot`, or `acme`) |
 
 The sing-box service merges every JSON file in `/etc/sing-box/`. The script tells you when other files are present there.
 

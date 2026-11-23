@@ -97,6 +97,7 @@ singbox_render() {
   # Xray sockopt names are not sing-box listen fields; never drop them
   # silently when switching cores or rendering directly.
   check_sockopt_support sing-box
+  check_xhttp_core_support sing-box
   if [[ -z "$listen" ]]; then
     # `listen` is required. "::" is dual-stack, but fails to bind on hosts
     # where IPv6 is disabled.

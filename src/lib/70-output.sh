@@ -11,6 +11,10 @@ link_label() {
   printf '%s-%s' "${CFG_NODE_NAME:-ToastBox}" "$1"
 }
 
+xhttp_dial_addr() {
+  printf '%s' "${CFG_XHTTP_CONNECT_ADDR:-$CFG_XHTTP_HOST}"
+}
+
 # Share link in the format understood by v2rayN / v2rayNG / NekoBox /
 # Shadowrocket and friends. `type=tcp` is the name clients use for what
 # Xray now calls the RAW transport.
@@ -57,10 +61,41 @@ hy2_link() {
     "$query" "$(urlencode "$(link_label hy2)")"
 }
 
-# client_jq FILTER: runs a jq filter with the arguments shared by both
-# client renderers. OUT_VLESS / OUT_SS / OUT_HY2 select which outbounds are emitted.
+# Standard VLESS + XHTTP share link understood by v2rayN / v2rayNG / Xray.
+xhttp_link() {
+  local dial query
+  dial="$(uri_host "$(xhttp_dial_addr)")"
+  query="encryption=none&security=tls"
+  query+="&sni=$(urlencode "$CFG_XHTTP_HOST")"
+  query+="&alpn=$(urlencode "$CFG_XHTTP_ALPN")"
+  query+="&fp=chrome&type=xhttp"
+  query+="&host=$(urlencode "$CFG_XHTTP_HOST")"
+  query+="&path=$(urlencode "$CFG_XHTTP_PATH")"
+  query+="&mode=$(urlencode "$CFG_XHTTP_CLIENT_MODE")"
+  printf 'vless://%s@%s:%s?%s#%s\n' \
+    "$CFG_XHTTP_UUID" "$dial" "$CFG_XHTTP_PUBLIC_PORT" \
+    "$query" "$(urlencode "$(link_label xhttp)")"
+}
+
+xhttp_ws_link() {
+  local dial query
+  dial="$(uri_host "$(xhttp_dial_addr)")"
+  query="encryption=none&security=tls"
+  query+="&sni=$(urlencode "$CFG_XHTTP_HOST")"
+  query+="&alpn=$(urlencode "http/1.1")"
+  query+="&fp=chrome&type=ws"
+  query+="&host=$(urlencode "$CFG_XHTTP_HOST")"
+  query+="&path=$(urlencode "$CFG_XHTTP_WS_PATH")"
+  printf 'vless://%s@%s:%s?%s#%s\n' \
+    "$CFG_XHTTP_UUID" "$dial" "$CFG_XHTTP_WS_PUBLIC_PORT" \
+    "$query" "$(urlencode "$(link_label xhttp-ws)")"
+}
+
+# client_jq ARGS...: runs jq with the arguments shared by all client
+# renderers. OUT_VLESS / OUT_SS / OUT_HY2 / OUT_XHTTP select which outbounds are emitted.
 client_jq() {
   jq -n \
+    --arg node_name "${CFG_NODE_NAME:-ToastBox}" \
     --arg server "$CFG_SERVER_ADDR" \
     --arg vless "$OUT_VLESS" \
     --arg vless_port "$CFG_VLESS_PORT" \
@@ -72,6 +107,7 @@ client_jq() {
     --arg ss_port "$CFG_SS_PORT" \
     --arg ss_method "$CFG_SS_METHOD" \
     --arg ss_password "$CFG_SS_PASSWORD" \
+    --arg ss_network "$CFG_SS_NETWORK" \
     --arg hy2 "$OUT_HY2" \
     --arg hy2_port "$CFG_HY2_PORT" \
     --arg hy2_password "$CFG_HY2_PASSWORD" \
@@ -84,7 +120,19 @@ client_jq() {
     --arg hy2_hop_ports "$CFG_HY2_HOP_PORTS" \
     --arg hy2_hop_min "$CFG_HY2_HOP_INTERVAL_MIN" \
     --arg hy2_hop_max "$CFG_HY2_HOP_INTERVAL_MAX" \
-    "$1"
+    --arg xhttp "$OUT_XHTTP" \
+    --arg xhttp_dial "$(xhttp_dial_addr)" \
+    --arg xhttp_public_port "$CFG_XHTTP_PUBLIC_PORT" \
+    --arg xhttp_connect_addr "$CFG_XHTTP_CONNECT_ADDR" \
+    --arg xhttp_uuid "$CFG_XHTTP_UUID" \
+    --arg xhttp_host "$CFG_XHTTP_HOST" \
+    --arg xhttp_path "$CFG_XHTTP_PATH" \
+    --arg xhttp_client_mode "$CFG_XHTTP_CLIENT_MODE" \
+    --arg xhttp_alpn "$CFG_XHTTP_ALPN" \
+    --arg xhttp_ws "$CFG_XHTTP_WS" \
+    --arg xhttp_ws_public_port "$CFG_XHTTP_WS_PUBLIC_PORT" \
+    --arg xhttp_ws_path "$CFG_XHTTP_WS_PATH" \
+    "$@"
 }
 
 # A complete Xray client configuration: SOCKS5 on 127.0.0.1:1080. The first
@@ -95,13 +143,20 @@ client_xray_json() {
     {
       log: {logLevel: "warning"},
       inbounds: [
-        {
+        ({
           tag: "socks-in",
           listen: "127.0.0.1",
           port: 1080,
           protocol: "socks",
           settings: {udp: true}
         }
+        + (if $xhttp == "1" and $xhttp_ws == "1" then {
+          sniffing: {
+            enabled: true,
+            destOverride: ["http", "tls"],
+            routeOnly: true
+          }
+        } else {} end))
       ],
       outbounds: [
         (if $vless == "1" then
@@ -123,6 +178,59 @@ client_xray_json() {
                 fingerprint: "chrome",
                 password: $public_key,
                 shortId: $short_id
+              }
+            }
+          }
+        else empty end),
+        (if $xhttp == "1" then
+          {
+            tag: "vless-xhttp",
+            protocol: "vless",
+            settings: {
+              address: $xhttp_dial,
+              port: ($xhttp_public_port | tonumber),
+              id: $xhttp_uuid,
+              encryption: "none"
+            },
+            streamSettings: {
+              method: "xhttp",
+              security: "tls",
+              tlsSettings: {
+                serverName: $xhttp_host,
+                alpn: ($xhttp_alpn | split(",")),
+                fingerprint: "chrome",
+                useSystemCA: true
+              },
+              xhttpSettings: {
+                host: $xhttp_host,
+                path: $xhttp_path,
+                mode: $xhttp_client_mode
+              }
+            }
+          }
+        else empty end),
+        (if $xhttp == "1" and $xhttp_ws == "1" then
+          {
+            tag: "vless-ws-keepalive",
+            protocol: "vless",
+            settings: {
+              address: $xhttp_dial,
+              port: ($xhttp_ws_public_port | tonumber),
+              id: $xhttp_uuid,
+              encryption: "none"
+            },
+            streamSettings: {
+              method: "websocket",
+              security: "tls",
+              tlsSettings: {
+                serverName: $xhttp_host,
+                alpn: ["http/1.1"],
+                fingerprint: "chrome",
+                useSystemCA: true
+              },
+              wsSettings: {
+                host: $xhttp_host,
+                path: $xhttp_ws_path
               }
             }
           }
@@ -188,12 +296,42 @@ client_xray_json() {
           }
         else empty end)
       ]
-    }'
+    }
+    + (if $xhttp == "1" and $xhttp_ws == "1" then {
+      routing: {
+        rules: [
+          {
+            domain: [
+              "domain:openai.com",
+              "domain:chatgpt.com",
+              "domain:oaistatic.com",
+              "domain:oaiusercontent.com"
+            ],
+            outboundTag: "vless-ws-keepalive"
+          },
+          {
+            port: "22",
+            network: "tcp",
+            outboundTag: "vless-ws-keepalive"
+          }
+        ]
+      }
+    } else {} end)'
 }
 
 # A complete sing-box client configuration: mixed (SOCKS5 + HTTP) proxy on
 # 127.0.0.1:1080. REALITY on the client side needs uTLS.
 client_singbox_json() {
+  if [[ "$OUT_XHTTP" == "1" ]]; then
+    if [[ "$CFG_XHTTP_WS" == "1" ]]; then
+      log_warn warn_singbox_xhttp_ws_only
+    else
+      if [[ "$OUT_VLESS" != "1" && "$OUT_SS" != "1" && "$OUT_HY2" != "1" ]]; then
+        die err_format_singbox_no_xhttp
+      fi
+      log_warn warn_singbox_skip_xhttp
+    fi
+  fi
   # shellcheck disable=SC2016  # jq variables, not shell ones
   client_jq '
     def pem_lines: sub("\n+$"; "") | split("\n");
@@ -221,6 +359,26 @@ client_singbox_json() {
               server_name: $sni,
               utls: {enabled: true, fingerprint: "chrome"},
               reality: {enabled: true, public_key: $public_key, short_id: $short_id}
+            }
+          }
+        else empty end),
+        (if $xhttp == "1" and $xhttp_ws == "1" then
+          {
+            type: "vless",
+            tag: "vless-ws-keepalive",
+            server: $xhttp_dial,
+            server_port: ($xhttp_ws_public_port | tonumber),
+            uuid: $xhttp_uuid,
+            tls: {
+              enabled: true,
+              server_name: $xhttp_host,
+              alpn: ["http/1.1"],
+              utls: {enabled: true, fingerprint: "chrome"}
+            },
+            transport: {
+              type: "ws",
+              path: $xhttp_ws_path,
+              headers: {Host: $xhttp_host}
             }
           }
         else empty end),
@@ -271,14 +429,36 @@ client_singbox_json() {
           } else {} end))
         else empty end)
       ],
-      route: {
-        final: (
-          if $vless == "1" then "vless-reality"
-          elif $ss == "1" then "ss-2022"
-          else "hysteria2"
-          end
-        )
-      }
+      route: (
+        {
+          final: (
+            if $vless == "1" then "vless-reality"
+            elif $ss == "1" then "ss-2022"
+            elif $hy2 == "1" then "hysteria2"
+            else "vless-ws-keepalive"
+            end
+          )
+        }
+        + (if $xhttp == "1" and $xhttp_ws == "1" and ($vless == "1" or $ss == "1" or $hy2 == "1") then {
+          rules: [
+            {action: "sniff"},
+            {
+              domain_suffix: [
+                "openai.com",
+                "chatgpt.com",
+                "oaistatic.com",
+                "oaiusercontent.com"
+              ],
+              outbound: "vless-ws-keepalive"
+            },
+            {
+              network: "tcp",
+              port: [22],
+              outbound: "vless-ws-keepalive"
+            }
+          ]
+        } else {} end)
+      )
     }'
 }
 
@@ -327,27 +507,292 @@ client_hysteria2_json() {
     } else {} end)'
 }
 
+# Complete runnable Mihomo (Clash Meta >= v1.19.34) YAML configuration.
+client_mihomo_yaml() {
+  # shellcheck disable=SC2016  # jq variables, not shell ones
+  client_jq -r '
+    def q: @json;
+    def node_label($s): ($node_name + "-" + $s);
+    def has_fallback: ($xhttp == "1" and $xhttp_connect_addr != "" and $xhttp_connect_addr != $xhttp_host);
+    def proxy_names:
+      [
+        (if $vless == "1" then node_label("vless") else empty end),
+        (if $xhttp == "1" then node_label("xhttp") else empty end),
+        (if has_fallback then node_label("xhttp-fallback") else empty end),
+        (if $xhttp == "1" and $xhttp_ws == "1" then node_label("xhttp-ws") else empty end),
+        (if has_fallback and $xhttp_ws == "1" then node_label("xhttp-ws-fallback") else empty end),
+        (if $ss == "1" then node_label("ss") else empty end),
+        (if $hy2 == "1" then node_label("hy2") else empty end)
+      ];
+    def ws_names:
+      [
+        (if $xhttp == "1" and $xhttp_ws == "1" then node_label("xhttp-ws") else empty end),
+        (if has_fallback and $xhttp_ws == "1" then node_label("xhttp-ws-fallback") else empty end),
+        (if $xhttp == "1" then node_label("xhttp") else empty end),
+        (if has_fallback then node_label("xhttp-fallback") else empty end),
+        (if $vless == "1" then node_label("vless") else empty end),
+        (if $ss == "1" then node_label("ss") else empty end),
+        (if $hy2 == "1" then node_label("hy2") else empty end)
+      ];
+    def xhttp_entry($name; $srv):
+      [
+        "  - name: \($name | q)",
+        "    type: vless",
+        "    server: \($srv | q)",
+        "    port: \($xhttp_public_port)",
+        "    uuid: \($xhttp_uuid | q)",
+        "    udp: true",
+        "    tls: true",
+        "    servername: \($xhttp_host | q)",
+        "    client-fingerprint: chrome",
+        "    alpn:",
+        (($xhttp_alpn | split(","))[] | "      - \(. | q)"),
+        "    network: xhttp",
+        "    xhttp-opts:",
+        "      host: \($xhttp_host | q)",
+        "      path: \($xhttp_path | q)",
+        "      mode: \($xhttp_client_mode | q)"
+      ];
+    def ws_entry($name; $srv):
+      [
+        "  - name: \($name | q)",
+        "    type: vless",
+        "    server: \($srv | q)",
+        "    port: \($xhttp_ws_public_port)",
+        "    uuid: \($xhttp_uuid | q)",
+        "    udp: true",
+        "    tls: true",
+        "    servername: \($xhttp_host | q)",
+        "    client-fingerprint: chrome",
+        "    alpn:",
+        "      - \"http/1.1\"",
+        "    network: ws",
+        "    ws-opts:",
+        "      path: \($xhttp_ws_path | q)",
+        "      headers:",
+        "        Host: \($xhttp_host | q)"
+      ];
+    def vless_lines:
+      if $vless == "1" then
+        [
+          "  - name: \(node_label("vless") | q)",
+          "    type: vless",
+          "    server: \($server | q)",
+          "    port: \($vless_port)",
+          "    uuid: \($uuid | q)",
+          "    network: tcp",
+          "    udp: true",
+          "    tls: true",
+          "    flow: xtls-rprx-vision",
+          "    servername: \($sni | q)",
+          "    client-fingerprint: chrome",
+          "    reality-opts:",
+          "      public-key: \($public_key | q)",
+          "      short-id: \($short_id | q)"
+        ]
+      else [] end;
+    def xhttp_lines:
+      if $xhttp == "1" then
+        xhttp_entry(node_label("xhttp"); $xhttp_dial)
+        + (if has_fallback then xhttp_entry(node_label("xhttp-fallback"); $xhttp_host) else [] end)
+        + (if $xhttp_ws == "1" then
+            ws_entry(node_label("xhttp-ws"); $xhttp_dial)
+            + (if has_fallback then ws_entry(node_label("xhttp-ws-fallback"); $xhttp_host) else [] end)
+           else [] end)
+      else [] end;
+    def ss_lines:
+      if $ss == "1" then
+        [
+          "  - name: \(node_label("ss") | q)",
+          "    type: ss",
+          "    server: \($server | q)",
+          "    port: \($ss_port)",
+          "    cipher: \($ss_method | q)",
+          "    password: \($ss_password | q)",
+          "    udp: \(if $ss_network == "tcp" then "false" else "true" end)"
+        ]
+      else [] end;
+    def hy2_lines:
+      if $hy2 == "1" then
+        [
+          "  - name: \(node_label("hy2") | q)",
+          "    type: hysteria2",
+          "    server: \($server | q)"
+        ]
+        + (if $hy2_hop_ports != "" then
+            [
+              "    ports: \($hy2_hop_ports | q)",
+              "    hop-interval: \(if $hy2_hop_min == $hy2_hop_max then $hy2_hop_min else "\($hy2_hop_min)-\($hy2_hop_max)" | q end)"
+            ]
+           else
+            ["    port: \($hy2_port)"]
+           end)
+        + [
+            "    password: \($hy2_password | q)"
+          ]
+        + (if $hy2_sni != "" then ["    sni: \($hy2_sni | q)"] else [] end)
+        + (if $hy2_tls == "self-signed" then
+            [
+              "    skip-cert-verify: false",
+              "    fingerprint: \($hy2_sha256 | q)"
+            ]
+           else [] end)
+        + (if $hy2_obfs == "salamander" then
+            [
+              "    obfs: salamander",
+              "    obfs-password: \($hy2_obfs_password | q)"
+            ]
+           else [] end)
+        + [
+            "    alpn:",
+            "      - \"h3\""
+          ]
+      else [] end;
+
+    [
+      (if $xhttp == "1"
+       then "# Generated by ToastBox (Mihomo >= v1.19.34 required for XHTTP)"
+       else "# Generated by ToastBox" end),
+      "mixed-port: 1080",
+      "bind-address: 127.0.0.1",
+      "allow-lan: false",
+      "mode: rule",
+      "log-level: warning",
+      "",
+      "proxies:"
+    ]
+    + vless_lines + xhttp_lines + ss_lines + hy2_lines
+    + [
+      "",
+      "proxy-groups:",
+      "  - name: \"Proxy-Main\"",
+      "    type: select",
+      "    proxies:"
+    ]
+    + (proxy_names | map("      - \(q)"))
+    + (if $xhttp == "1" and $xhttp_ws == "1" then
+        [
+          "  - name: \"Long-Conn-KeepAlive\"",
+          "    type: select",
+          "    proxies:"
+        ] + (ws_names | map("      - \(q)"))
+       else [] end)
+    + [
+      "",
+      "rules:",
+      "  # Private / loopback / CGNAT / link-local direct rules MUST stay before DST-PORT,22",
+      "  - IP-CIDR,127.0.0.0/8,DIRECT,no-resolve",
+      "  - IP-CIDR,10.0.0.0/8,DIRECT,no-resolve",
+      "  - IP-CIDR,100.64.0.0/10,DIRECT,no-resolve",
+      "  - IP-CIDR,169.254.0.0/16,DIRECT,no-resolve",
+      "  - IP-CIDR,172.16.0.0/12,DIRECT,no-resolve",
+      "  - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve",
+      "  - IP-CIDR6,::1/128,DIRECT,no-resolve",
+      "  - IP-CIDR6,fc00::/7,DIRECT,no-resolve",
+      "  - IP-CIDR6,fe80::/10,DIRECT,no-resolve"
+    ]
+    + (if $xhttp == "1" and $xhttp_ws == "1" then
+        [
+          "  - DOMAIN-SUFFIX,openai.com,Long-Conn-KeepAlive",
+          "  - DOMAIN-SUFFIX,chatgpt.com,Long-Conn-KeepAlive",
+          "  - DOMAIN-SUFFIX,oaistatic.com,Long-Conn-KeepAlive",
+          "  - DOMAIN-SUFFIX,oaiusercontent.com,Long-Conn-KeepAlive",
+          "  - DST-PORT,22,Long-Conn-KeepAlive"
+        ]
+       else [] end)
+    + ["  - MATCH,Proxy-Main"]
+    | join("\n")'
+}
+
+nginx_xhttp_snippet() {
+  local upstream
+  [[ "$OUT_XHTTP" == "1" ]] || die err_format_requires_xhttp
+  [[ "$CFG_XHTTP_TLS" == "none" ]] || die err_format_nginx_requires_none
+  upstream="$(uri_host "$CFG_XHTTP_LISTEN")"
+  cat <<EOF
+# Embed inside: server { listen 443 ssl; http2 on; server_name $CFG_XHTTP_HOST; ... }
+# Note: On Nginx < 1.25.1 use 'listen 443 ssl http2;' and remove 'http2 on;'.
+# Do NOT change '^~' to '=' on the XHTTP location (packet-up appends /<session>/<seq>).
+
+location ^~ $CFG_XHTTP_PATH {
+    client_max_body_size 0;
+    client_body_timeout  5m;
+    grpc_read_timeout    315s;
+    grpc_send_timeout    5m;
+    grpc_set_header      Host \$host;
+    grpc_set_header      X-Real-IP \$remote_addr;
+    grpc_set_header      X-Forwarded-For \$proxy_add_x_forwarded_for;
+    grpc_pass            grpc://$upstream:$CFG_XHTTP_PORT;
+}
+
+# HTTP/1.1 fallback (if Cloudflare HTTP/2 to Origin is disabled):
+# location ^~ $CFG_XHTTP_PATH {
+#     client_max_body_size    0;
+#     proxy_http_version      1.1;
+#     proxy_set_header        Host \$host;
+#     proxy_set_header        X-Real-IP \$remote_addr;
+#     proxy_set_header        X-Forwarded-For \$proxy_add_x_forwarded_for;
+#     proxy_set_header        Connection "";
+#     proxy_buffering         off;
+#     proxy_request_buffering off;
+#     proxy_read_timeout      3600s;
+#     proxy_send_timeout      3600s;
+#     proxy_pass              http://$upstream:$CFG_XHTTP_PORT;
+# }
+EOF
+  if [[ "$CFG_XHTTP_WS" == "1" ]]; then
+    cat <<EOF
+
+# Companion VLESS + WebSocket keep-alive path (heartbeatPeriod: ${CFG_XHTTP_WS_HEARTBEAT}s)
+location = $CFG_XHTTP_WS_PATH {
+    if (\$http_upgrade !~* "^websocket\$") {
+        return 404;
+    }
+    proxy_http_version 1.1;
+    proxy_set_header   Upgrade \$http_upgrade;
+    proxy_set_header   Connection "upgrade";
+    proxy_set_header   Host \$host;
+    proxy_set_header   X-Real-IP \$remote_addr;
+    proxy_set_header   X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_pass         http://$upstream:$CFG_XHTTP_WS_PORT;
+}
+EOF
+  fi
+}
+
 # Machine-readable description: the state plus the share links. Private keys
 # are left out: no client needs them, and this output tends to get pasted into
 # issues and chats.
 show_json() {
-  local vless_uri="" ss_uri="" hy2_uri=""
+  local vless_uri="" ss_uri="" hy2_uri="" xhttp_uri="" xhttp_ws_uri=""
   [[ "$OUT_VLESS" == "1" ]] && vless_uri="$(vless_link)"
   [[ "$OUT_SS" == "1" ]] && ss_uri="$(ss_link)"
   [[ "$OUT_HY2" == "1" ]] && hy2_uri="$(hy2_link)"
-  state_json | jq --arg vless "$vless_uri" --arg ss "$ss_uri" --arg hy2 "$hy2_uri" \
+  [[ "$OUT_XHTTP" == "1" ]] && xhttp_uri="$(xhttp_link)"
+  [[ "$OUT_XHTTP" == "1" && "$CFG_XHTTP_WS" == "1" ]] && xhttp_ws_uri="$(xhttp_ws_link)"
+  state_json | jq \
+    --arg vless "$vless_uri" --arg ss "$ss_uri" --arg hy2 "$hy2_uri" \
+    --arg xhttp "$xhttp_uri" --arg xhttp_ws "$xhttp_ws_uri" \
     --arg version "$TB_VERSION" '
-    del(.firewall, .schema, .vless.private_key, .hy2.key)
+    del(.firewall, .schema, .vless.private_key, .hy2.key, .xhttp.key)
     + {toastbox_version: $version}
     + {links: ({} + (if $vless != "" then {vless: $vless} else {} end)
                   + (if $ss != "" then {ss: $ss} else {} end)
-                  + (if $hy2 != "" then {hy2: $hy2} else {} end))}'
+                  + (if $hy2 != "" then {hy2: $hy2} else {} end)
+                  + (if $xhttp != "" then {xhttp: $xhttp} else {} end)
+                  + (if $xhttp_ws != "" then {xhttp_ws: $xhttp_ws} else {} end))}'
 }
 
 show_links() {
   if [[ "$OUT_VLESS" == "1" ]]; then vless_link; fi
   if [[ "$OUT_SS" == "1" ]]; then ss_link; fi
   if [[ "$OUT_HY2" == "1" ]]; then hy2_link; fi
+  if [[ "$OUT_XHTTP" == "1" ]]; then
+    xhttp_link
+    if [[ "$CFG_XHTTP_WS" == "1" ]]; then xhttp_ws_link; fi
+  fi
 }
 
 show_qr() {
@@ -457,6 +902,55 @@ show_text() {
     fi
   fi
 
+  if [[ "$OUT_XHTTP" == "1" ]]; then
+    link="$(xhttp_link)"
+    printf '\n%s-- VLESS + XHTTP --%s\n' "$TB_C_BOLD" "$TB_C_RESET"
+    kv label_tls "$CFG_XHTTP_TLS"
+    if [[ "$CFG_XHTTP_TLS" == "none" ]]; then
+      kv label_backend "$(uri_host "$CFG_XHTTP_LISTEN"):$CFG_XHTTP_PORT/tcp"
+    else
+      if [[ -n "$CFG_XHTTP_LISTEN" ]]; then
+        kv label_backend "$(uri_host "$CFG_XHTTP_LISTEN"):$CFG_XHTTP_PORT/tcp"
+      else
+        kv label_port "$CFG_XHTTP_PORT/tcp"
+      fi
+      if [[ -n "$CFG_XHTTP_CERT_FILE" ]]; then
+        kv label_cert_file "$CFG_XHTTP_CERT_FILE"
+        if [[ "$CFG_XHTTP_CERTBOT_HOOK" == "1" ]]; then
+          kv label_cert_hook "certbot"
+        fi
+      fi
+    fi
+    kv label_connect_addr "$(uri_host "$(xhttp_dial_addr)"):$CFG_XHTTP_PUBLIC_PORT"
+    kv label_host "$CFG_XHTTP_HOST"
+    kv label_path "$CFG_XHTTP_PATH"
+    kv label_xhttp_mode "$CFG_XHTTP_MODE (client: $CFG_XHTTP_CLIENT_MODE)"
+    kv label_alpn "$CFG_XHTTP_ALPN"
+    kv label_uuid "$CFG_XHTTP_UUID"
+    kv label_fingerprint "chrome"
+    printf '\n  %s\n  %s\n' "$(msg label_link)" "$link"
+    if [[ "${OPT_QR:-0}" == "1" ]]; then show_qr "$link"; fi
+
+    if [[ "$CFG_XHTTP_WS" == "1" ]]; then
+      link="$(xhttp_ws_link)"
+      printf '\n%s-- VLESS + WS (Keep-Alive) --%s\n' "$TB_C_BOLD" "$TB_C_RESET"
+      if [[ "$CFG_XHTTP_TLS" == "none" || -n "$CFG_XHTTP_LISTEN" ]]; then
+        kv label_backend "$(uri_host "$CFG_XHTTP_LISTEN"):$CFG_XHTTP_WS_PORT/tcp"
+      else
+        kv label_port "$CFG_XHTTP_WS_PORT/tcp"
+      fi
+      kv label_connect_addr "$(uri_host "$(xhttp_dial_addr)"):$CFG_XHTTP_WS_PUBLIC_PORT"
+      kv label_host "$CFG_XHTTP_HOST"
+      kv label_path "$CFG_XHTTP_WS_PATH"
+      kv label_ws_heartbeat "${CFG_XHTTP_WS_HEARTBEAT}s"
+      kv label_alpn "http/1.1"
+      kv label_uuid "$CFG_XHTTP_UUID"
+      printf '\n  %s\n  %s\n' "$(msg label_link)" "$link"
+      if [[ "${OPT_QR:-0}" == "1" ]]; then show_qr "$link"; fi
+      printf '\n  %s\n' "$(msg note_xhttp_ws_keepalive)"
+    fi
+  fi
+
   if [[ "$CFG_HY2" == "1" && -n "$CFG_HY2_HOP_PORTS" ]]; then
     udp_list="$CFG_HY2_PORT,$CFG_HY2_HOP_PORTS"
     if [[ "$CFG_SS" == "1" && "$CFG_SS_NETWORK" != "tcp" ]]; then
@@ -465,6 +959,12 @@ show_text() {
     sg_udp="$(norm_hy2_hop_ports "$udp_list")"
   fi
   printf '\n%s\n%s\n' "$(msg note_client_configs)" "$(msg note_firewall)"
+  if [[ "$OUT_XHTTP" == "1" ]]; then
+    if [[ "$CFG_XHTTP_TLS" == "none" ]]; then
+      printf '%s\n' "$(msg note_xhttp_nginx)"
+    fi
+    printf '%s\n' "$(msg note_xhttp_mihomo_ver)"
+  fi
   if [[ "$CFG_HY2" == "1" && "$CFG_HY2_ACME" == "1" && "$CFG_HY2_CERTBOT_HOOK" == "1" ]]; then
     printf '%s\n' "$(msg note_hy2_acme_firewall "$CFG_CORE")"
   fi
@@ -480,18 +980,22 @@ select_output_protocols() {
   OUT_VLESS="$CFG_VLESS"
   OUT_SS="$CFG_SS"
   OUT_HY2="$CFG_HY2"
+  OUT_XHTTP="$CFG_XHTTP"
   if [[ -n "${OPT_PROTOCOLS:-}" ]]; then
-    local want_vless=0 want_ss=0 want_hy2=0
+    local want_vless=0 want_ss=0 want_hy2=0 want_xhttp=0
     parse_protocols "$OPT_PROTOCOLS" || die err_protocols "$OPT_PROTOCOLS"
     want_vless="$PARSED_VLESS"
     want_ss="$PARSED_SS"
     want_hy2="$PARSED_HY2"
+    want_xhttp="$PARSED_XHTTP"
     [[ "$want_vless" == "1" && "$CFG_VLESS" != "1" ]] && die err_protocol_disabled "vless"
     [[ "$want_ss" == "1" && "$CFG_SS" != "1" ]] && die err_protocol_disabled "ss"
     [[ "$want_hy2" == "1" && "$CFG_HY2" != "1" ]] && die err_protocol_disabled "hy2"
+    [[ "$want_xhttp" == "1" && "$CFG_XHTTP" != "1" ]] && die err_protocol_disabled "xhttp"
     OUT_VLESS="$want_vless"
     OUT_SS="$want_ss"
     OUT_HY2="$want_hy2"
+    OUT_XHTTP="$want_xhttp"
   fi
   return 0
 }
@@ -505,6 +1009,8 @@ show_node() {
     xray) client_xray_json ;;
     sing-box) client_singbox_json ;;
     hysteria2) client_hysteria2_json ;;
+    mihomo) client_mihomo_yaml ;;
+    nginx) nginx_xhttp_snippet ;;
     *) die err_format "$OPT_FORMAT" ;;
   esac
 }

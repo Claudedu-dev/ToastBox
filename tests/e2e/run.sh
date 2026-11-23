@@ -466,9 +466,68 @@ tb install -y --protocols hy2 --hy2-port 9443 --hy2-obfs none --hy2-masquerade n
 [[ "$(state .vless.enabled)" == "false" ]] || fail "vless stayed enabled on hy2-only switch"
 check_hy2_clients
 
-step "hysteria 2 imported certificate + certbot hook (--hy2-tls files & refresh-cert)"
 openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:prime256v1 -out "$work/ca.key" 2>/dev/null
 openssl req -new -x509 -sha256 -days 30 -key "$work/ca.key" -subj "/CN=ToastBox E2E CA" -out "$work/ca.crt" 2>/dev/null
+
+if [[ "$core" == "xray" ]]; then
+  step "VLESS + XHTTP (tls=none loopback + tls=files + WS keep-alive + refresh-cert + rotate)"
+  tb install -y --core xray --protocols xhttp --xhttp-tls none \
+    --xhttp-host xhttp.e2e.test --xhttp-path /e2e-xhttp \
+    --xhttp-ws-keepalive --xhttp-ws-path /e2e-ws >/dev/null
+  [[ "$(state .server_addr)" == "xhttp.e2e.test" ]] || fail "xhttp-only did not inherit server_addr"
+  tb show --format nginx | grep -Fq 'grpc_pass            grpc://127.0.0.1:10000;' || fail "nginx snippet missing grpc_pass"
+  tb show --format mihomo | grep -Fq 'mixed-port: 1080' || fail "mihomo YAML missing mixed-port"
+  tb show --format sing-box 2>/dev/null | jq -e '.outbounds[0].tag == "vless-ws-keepalive"' >/dev/null || fail "sing-box did not export vless-ws-keepalive"
+  tb show --format xray | jq -e '.routing.rules[0].outboundTag == "vless-ws-keepalive"' >/dev/null || fail "xray client missing keep-alive routing rule"
+  ss -H -ltn "sport = :10000" | grep -q . || fail "xray not listening on XHTTP loopback 10000"
+  ss -H -ltn "sport = :10001" | grep -q . || fail "xray not listening on WS loopback 10001"
+
+  make_xhttp_e2e_cert() {
+    local idx="$1"
+    openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:prime256v1 -out "$work/xhttp${idx}.key" 2>/dev/null
+    openssl req -new -key "$work/xhttp${idx}.key" -subj "/CN=xhttp.e2e.test" -out "$work/xhttp${idx}.csr" 2>/dev/null
+    printf 'basicConstraints=CA:FALSE\nkeyUsage=digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\nsubjectAltName=DNS:xhttp.e2e.test,IP:127.0.0.1\n' >"$work/xhttp${idx}.ext"
+    openssl x509 -req -in "$work/xhttp${idx}.csr" -CA "$work/ca.crt" -CAkey "$work/ca.key" -CAcreateserial \
+      -out "$work/xhttp${idx}.crt" -days 30 -sha256 -extfile "$work/xhttp${idx}.ext" 2>/dev/null
+    cat "$work/xhttp${idx}.crt" "$work/ca.crt" >"$work/xhttp_chain.pem"
+    cp "$work/xhttp${idx}.key" "$work/xhttp_priv.key"
+  }
+  make_xhttp_e2e_cert 1
+  tb install -y --protocols xhttp --xhttp-tls files --xhttp-host xhttp.e2e.test \
+    --xhttp-connect-addr 127.0.0.1 --xhttp-port 8443 --xhttp-ws-port 2053 \
+    --xhttp-cert "$work/xhttp_chain.pem" --xhttp-key "$work/xhttp_priv.key" --xhttp-ws-keepalive >/dev/null
+  for tls_port in 8443 2053; do
+    good_sni="$(openssl s_client -connect "127.0.0.1:$tls_port" -servername xhttp.e2e.test </dev/null 2>&1 || true)"
+    [[ "$good_sni" == *"BEGIN CERTIFICATE"* ]] || fail "xhttp files mode did not present certificate for valid SNI on port $tls_port"
+    bad_sni="$(openssl s_client -connect "127.0.0.1:$tls_port" -servername wrong.e2e.test </dev/null 2>&1 || true)"
+    [[ "$bad_sni" != *"BEGIN CERTIFICATE"* ]] || fail "xhttp files mode leaked certificate to unknown SNI on port $tls_port"
+  done
+  echo "ok: xhttp and ws files mode serve cert to valid SNI and reject unknown SNI"
+  SSL_CERT_FILE="$work/ca.crt" check_protocol xhttp xray
+  tb show --format xray --protocols xhttp |
+    jq '.outbounds = [(.outbounds[] | select(.tag == "vless-ws-keepalive")), (.outbounds[] | select(.tag != "vless-ws-keepalive"))]' \
+    >"$work/xhttp-ws-client.json"
+  SSL_CERT_FILE="$work/ca.crt" start_client xray xhttp "$work/xhttp-ws-client.json" || fail "xhttp-ws client did not start"
+  [[ "$(through_proxy "$probe_url" || true)" == "204" ]] || fail "xhttp-ws failed to relay HTTP 204"
+  stop_client
+  echo "ok: xray/xhttp-ws relays TCP traffic"
+
+  xsha1="$(state .xhttp.cert_sha256)"
+  xuuid1="$(state .xhttp.uuid)"
+  xpath1="$(state .xhttp.path)"
+  make_xhttp_e2e_cert 2
+  tb refresh-cert >/dev/null
+  [[ "$(state .xhttp.cert_sha256)" != "$xsha1" ]] || fail "xhttp refresh-cert did not update SHA-256"
+  [[ "$(state .xhttp.uuid)" == "$xuuid1" ]] || fail "xhttp refresh-cert changed UUID"
+  SSL_CERT_FILE="$work/ca.crt" check_protocol xhttp xray
+
+  tb rotate -y >/dev/null
+  [[ "$(state .xhttp.uuid)" != "$xuuid1" ]] || fail "xhttp rotate kept old UUID"
+  [[ "$(state .xhttp.path)" == "$xpath1" ]] || fail "xhttp rotate changed path"
+  SSL_CERT_FILE="$work/ca.crt" check_protocol xhttp xray
+fi
+
+step "hysteria 2 imported certificate + certbot hook (--hy2-tls files & refresh-cert)"
 e2e_live_dir="/etc/letsencrypt/live/toastweb-e2e.test"
 e2e_archive_dir="/etc/letsencrypt/archive/toastweb-e2e.test"
 mkdir -p "$e2e_live_dir" "$e2e_archive_dir" /etc/letsencrypt/renewal-hooks/deploy
@@ -501,12 +560,12 @@ echo "unknown command: ${1:-}" >&2
 exit 2
 EOF
   chmod 755 /usr/local/bin/toastbox
-  bash "$repo_main" --lang en install -y --protocols all --hy2-port 9443 --hy2-obfs salamander \
+  bash "$repo_main" --lang en install -y --protocols all --server-addr 127.0.0.1 --hy2-port 9443 --hy2-obfs salamander \
     --hy2-cert "$e2e_live_dir/fullchain.pem" --hy2-key "$e2e_live_dir/privkey.pem" \
     --hy2-sni hy2.e2e.test --hy2-cert-hook certbot >/dev/null
   ! grep -q 'unknown command:' /usr/local/bin/toastbox || fail "source install did not replace legacy /usr/local/bin/toastbox"
 else
-  tb install -y --protocols all --hy2-port 9443 --hy2-obfs salamander \
+  tb install -y --protocols all --server-addr 127.0.0.1 --hy2-port 9443 --hy2-obfs salamander \
     --hy2-cert "$e2e_live_dir/fullchain.pem" --hy2-key "$e2e_live_dir/privkey.pem" \
     --hy2-sni hy2.e2e.test --hy2-cert-hook certbot >/dev/null
 fi

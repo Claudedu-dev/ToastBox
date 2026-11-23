@@ -51,6 +51,24 @@ opt_reset() {
   OPT_HY2_ACME_AGREE_TOS=0
   OPT_HY2_HOP_PORTS=""
   OPT_HY2_HOP_INTERVAL=""
+  OPT_XHTTP_TLS=""
+  OPT_XHTTP_LISTEN=""
+  OPT_XHTTP_PORT=""
+  OPT_XHTTP_PUBLIC_PORT=""
+  OPT_XHTTP_CONNECT_ADDR=""
+  OPT_XHTTP_HOST=""
+  OPT_XHTTP_PATH=""
+  OPT_XHTTP_MODE=""
+  OPT_XHTTP_CLIENT_MODE=""
+  OPT_XHTTP_ALPN=""
+  OPT_XHTTP_CERT=""
+  OPT_XHTTP_KEY=""
+  OPT_XHTTP_CERT_HOOK=""
+  OPT_XHTTP_WS_KEEPALIVE=""
+  OPT_XHTTP_WS_PORT=""
+  OPT_XHTTP_WS_PUBLIC_PORT=""
+  OPT_XHTTP_WS_PATH=""
+  OPT_XHTTP_WS_HEARTBEAT=""
   OPT_BLOCK_BT=""
   OPT_ALLOW_PRIVATE=""
   OPT_TCP_KEEPALIVE_IDLE=""
@@ -104,6 +122,23 @@ parse_args() {
       --hy2-acme-email) var=OPT_HY2_ACME_EMAIL ;;
       --hy2-hop-ports) var=OPT_HY2_HOP_PORTS ;;
       --hy2-hop-interval) var=OPT_HY2_HOP_INTERVAL ;;
+      --xhttp-tls) var=OPT_XHTTP_TLS ;;
+      --xhttp-listen) var=OPT_XHTTP_LISTEN ;;
+      --xhttp-port) var=OPT_XHTTP_PORT ;;
+      --xhttp-public-port) var=OPT_XHTTP_PUBLIC_PORT ;;
+      --xhttp-connect-addr) var=OPT_XHTTP_CONNECT_ADDR ;;
+      --xhttp-host) var=OPT_XHTTP_HOST ;;
+      --xhttp-path) var=OPT_XHTTP_PATH ;;
+      --xhttp-mode) var=OPT_XHTTP_MODE ;;
+      --xhttp-client-mode) var=OPT_XHTTP_CLIENT_MODE ;;
+      --xhttp-alpn) var=OPT_XHTTP_ALPN ;;
+      --xhttp-cert) var=OPT_XHTTP_CERT ;;
+      --xhttp-key) var=OPT_XHTTP_KEY ;;
+      --xhttp-cert-hook) var=OPT_XHTTP_CERT_HOOK ;;
+      --xhttp-ws-port) var=OPT_XHTTP_WS_PORT ;;
+      --xhttp-ws-public-port) var=OPT_XHTTP_WS_PUBLIC_PORT ;;
+      --xhttp-ws-path) var=OPT_XHTTP_WS_PATH ;;
+      --xhttp-ws-heartbeat) var=OPT_XHTTP_WS_HEARTBEAT ;;
       --tcp-keepalive-idle) var=OPT_TCP_KEEPALIVE_IDLE ;;
       --tcp-keepalive-interval) var=OPT_TCP_KEEPALIVE_INTERVAL ;;
       --tcp-user-timeout) var=OPT_TCP_USER_TIMEOUT ;;
@@ -114,7 +149,12 @@ parse_args() {
     esac
     if [[ -n "$var" ]]; then
       (($# > 0)) || die err_missing_value "$arg"
-      if [[ -z "$1" ]] && [[ "$var" == OPT_TCP_* || "$var" == OPT_HY2_* ]]; then
+      if [[ "$var" == "OPT_XHTTP_CONNECT_ADDR" && -z "$1" ]]; then
+        OPT_XHTTP_CONNECT_ADDR="none"
+        shift
+        continue
+      fi
+      if [[ -z "$1" ]] && [[ "$var" == OPT_TCP_* || "$var" == OPT_HY2_* || "$var" == OPT_XHTTP_* ]]; then
         die err_invalid_option "$arg" "$1"
       fi
       printf -v "$var" '%s' "$1"
@@ -133,6 +173,8 @@ parse_args() {
       --skip-target-check) OPT_SKIP_TARGET_CHECK=1 ;;
       --hy2-renew-cert) OPT_HY2_RENEW_CERT=1 ;;
       --hy2-acme-agree-tos) OPT_HY2_ACME_AGREE_TOS=1 ;;
+      --xhttp-ws-keepalive) OPT_XHTTP_WS_KEEPALIVE=1 ;;
+      --no-xhttp-ws-keepalive) OPT_XHTTP_WS_KEEPALIVE=0 ;;
       --block-bt) OPT_BLOCK_BT=1 ;;
       --no-block-bt) OPT_BLOCK_BT=0 ;;
       --allow-private) OPT_ALLOW_PRIVATE=1 ;;
@@ -163,14 +205,16 @@ norm_core() {
 PARSED_VLESS=0
 PARSED_SS=0
 PARSED_HY2=0
+PARSED_XHTTP=0
 
-# parse_protocols "vless,ss,hy2": result in PARSED_VLESS / PARSED_SS / PARSED_HY2.
+# parse_protocols "vless,ss,hy2,xhttp": result in PARSED_*.
 parse_protocols() {
   local item
   local -a items=()
   PARSED_VLESS=0
   PARSED_SS=0
   PARSED_HY2=0
+  PARSED_XHTTP=0
   IFS=',+ ' read -r -a items <<<"$1"
   ((${#items[@]} > 0)) || return 1
   for item in "${items[@]}"; do
@@ -180,6 +224,7 @@ parse_protocols() {
       3 | ss | ss2022 | shadowsocks | shadowsocks-2022) PARSED_SS=1 ;;
       4 | hy2 | hysteria2 | hysteria) PARSED_HY2=1 ;;
       5 | all) PARSED_VLESS=1 PARSED_SS=1 PARSED_HY2=1 ;;
+      6 | xhttp | vless-xhttp) PARSED_XHTTP=1 ;;
       *) return 1 ;;
     esac
   done
@@ -191,6 +236,7 @@ norm_protocols() {
   [[ "$PARSED_VLESS" == "1" ]] && protos+=(vless)
   [[ "$PARSED_SS" == "1" ]] && protos+=(ss)
   [[ "$PARSED_HY2" == "1" ]] && protos+=(hy2)
+  [[ "$PARSED_XHTTP" == "1" ]] && protos+=(xhttp)
   join_by , "${protos[@]}"
 }
 
@@ -218,7 +264,13 @@ norm_host() {
   local host="$1"
   host="${host#[}"
   host="${host%]}"
-  valid_host "$host" && printf '%s' "$host"
+  if valid_domain "$host"; then
+    printf '%s' "${host,,}"
+  elif valid_ipv4 "$host" || valid_ipv6 "$host"; then
+    printf '%s' "$host"
+  else
+    return 1
+  fi
 }
 
 norm_host_port() {
@@ -251,9 +303,57 @@ norm_ss_network() {
 
 norm_format() {
   case "$1" in
-    text | json | links | xray) printf '%s' "$1" ;;
+    text | json | links | xray | mihomo | nginx) printf '%s' "$1" ;;
     sing-box | singbox) printf 'sing-box' ;;
     hysteria2 | hy2) printf 'hysteria2' ;;
+    clash | clash-meta) printf 'mihomo' ;;
+    *) return 1 ;;
+  esac
+}
+
+norm_xhttp_tls() {
+  case "$1" in
+    1 | none | off) printf 'none' ;;
+    2 | files | file | import) printf 'files' ;;
+    *) return 1 ;;
+  esac
+}
+
+norm_xhttp_path() {
+  local p="$1"
+  [[ -n "$p" ]] || return 1
+  [[ "$p" == /* ]] || p="/$p"
+  while [[ "$p" == */ && "$p" != "/" ]]; do
+    p="${p%/}"
+  done
+  valid_xhttp_path "$p" && printf '%s' "$p"
+}
+
+norm_xhttp_connect_addr() {
+  case "$1" in
+    none | off) printf 'none' ;;
+    *) norm_host "$1" ;;
+  esac
+}
+
+norm_xhttp_mode() {
+  in_list "$1" "${TB_XHTTP_MODES[@]}" && printf '%s' "$1"
+}
+
+norm_xhttp_alpn() {
+  in_list "$1" "${TB_XHTTP_ALPNS[@]}" && printf '%s' "$1"
+}
+
+norm_xhttp_ws_heartbeat() {
+  local v
+  v="$(norm_socket_int "$1" 3600)" || return 1
+  ((v >= 1)) && printf '%d' "$v"
+}
+
+norm_yes_no() {
+  case "${1,,}" in
+    y | yes | 1 | true) printf '1' ;;
+    n | no | 0 | false) printf '0' ;;
     *) return 1 ;;
   esac
 }
@@ -383,6 +483,36 @@ validate_options() {
   if [[ "$OPT_HY2_HOP_PORTS" == "none" && -n "$OPT_HY2_HOP_INTERVAL" ]]; then
     die err_hy2_hop_interval_requires_ports
   fi
+  normalize_opt OPT_XHTTP_TLS norm_xhttp_tls --xhttp-tls
+  normalize_opt OPT_XHTTP_LISTEN norm_listen --xhttp-listen
+  normalize_opt OPT_XHTTP_PORT norm_port --xhttp-port
+  normalize_opt OPT_XHTTP_PUBLIC_PORT norm_port --xhttp-public-port
+  normalize_opt OPT_XHTTP_CONNECT_ADDR norm_xhttp_connect_addr --xhttp-connect-addr
+  normalize_opt OPT_XHTTP_HOST norm_domain --xhttp-host
+  normalize_opt OPT_XHTTP_PATH norm_xhttp_path --xhttp-path
+  normalize_opt OPT_XHTTP_MODE norm_xhttp_mode --xhttp-mode
+  normalize_opt OPT_XHTTP_CLIENT_MODE norm_xhttp_mode --xhttp-client-mode
+  normalize_opt OPT_XHTTP_ALPN norm_xhttp_alpn --xhttp-alpn
+  normalize_opt OPT_XHTTP_CERT_HOOK norm_hy2_cert_hook --xhttp-cert-hook
+  normalize_opt OPT_XHTTP_WS_PORT norm_port --xhttp-ws-port
+  normalize_opt OPT_XHTTP_WS_PUBLIC_PORT norm_port --xhttp-ws-public-port
+  normalize_opt OPT_XHTTP_WS_PATH norm_xhttp_path --xhttp-ws-path
+  normalize_opt OPT_XHTTP_WS_HEARTBEAT norm_xhttp_ws_heartbeat --xhttp-ws-heartbeat
+  if [[ -n "$OPT_XHTTP_TLS$OPT_XHTTP_LISTEN$OPT_XHTTP_PORT$OPT_XHTTP_PUBLIC_PORT$OPT_XHTTP_CONNECT_ADDR$OPT_XHTTP_HOST$OPT_XHTTP_PATH$OPT_XHTTP_MODE$OPT_XHTTP_CLIENT_MODE$OPT_XHTTP_ALPN$OPT_XHTTP_CERT$OPT_XHTTP_KEY$OPT_XHTTP_CERT_HOOK$OPT_XHTTP_WS_KEEPALIVE$OPT_XHTTP_WS_PORT$OPT_XHTTP_WS_PUBLIC_PORT$OPT_XHTTP_WS_PATH$OPT_XHTTP_WS_HEARTBEAT" ]]; then
+    [[ "$OPT_COMMAND" == "install" ]] || die err_xhttp_command
+  fi
+  if [[ "$OPT_XHTTP_TLS" == "none" && -n "$OPT_XHTTP_CERT$OPT_XHTTP_KEY" ]]; then
+    die err_xhttp_cert_with_none
+  fi
+  if [[ "$OPT_XHTTP_CERT_HOOK" == "certbot" && "$OPT_XHTTP_TLS" == "none" ]]; then
+    die err_xhttp_hook_not_none
+  fi
+  if [[ -n "$OPT_XHTTP_CERT" && -z "$OPT_XHTTP_KEY" ]] || [[ -z "$OPT_XHTTP_CERT" && -n "$OPT_XHTTP_KEY" ]]; then
+    die err_xhttp_cert_pair_required
+  fi
+  if [[ "$OPT_XHTTP_TLS" == "none" && -n "$OPT_XHTTP_LISTEN" ]] && ! hy2_hop_is_loopback "$OPT_XHTTP_LISTEN"; then
+    die err_xhttp_none_loopback "$OPT_XHTTP_LISTEN"
+  fi
   normalize_opt OPT_TCP_KEEPALIVE_IDLE norm_tcp_keepalive --tcp-keepalive-idle
   normalize_opt OPT_TCP_KEEPALIVE_INTERVAL norm_tcp_keepalive --tcp-keepalive-interval
   normalize_opt OPT_TCP_USER_TIMEOUT norm_tcp_user_timeout --tcp-user-timeout
@@ -392,7 +522,7 @@ validate_options() {
   normalize_opt OPT_CORE_VERSION norm_version --core-version
   normalize_opt OPT_FORMAT norm_format --format
   if [[ "$OPT_COMMAND" == "refresh-cert" ]]; then
-    if [[ -n "$OPT_CORE$OPT_PROTOCOLS$OPT_SERVER_ADDR$OPT_NAME$OPT_LISTEN$OPT_VLESS_PORT$OPT_REALITY_SNI$OPT_REALITY_TARGET$OPT_SS_PORT$OPT_SS_METHOD$OPT_SS_NETWORK$OPT_BLOCK_BT$OPT_ALLOW_PRIVATE$OPT_CORE_VERSION$OPT_FORMAT" ||
+    if [[ -n "$OPT_CORE$OPT_PROTOCOLS$OPT_SERVER_ADDR$OPT_NAME$OPT_LISTEN$OPT_VLESS_PORT$OPT_REALITY_SNI$OPT_REALITY_TARGET$OPT_SS_PORT$OPT_SS_METHOD$OPT_SS_NETWORK$OPT_XHTTP_TLS$OPT_XHTTP_LISTEN$OPT_XHTTP_PORT$OPT_XHTTP_PUBLIC_PORT$OPT_XHTTP_CONNECT_ADDR$OPT_XHTTP_HOST$OPT_XHTTP_PATH$OPT_XHTTP_MODE$OPT_XHTTP_CLIENT_MODE$OPT_XHTTP_ALPN$OPT_XHTTP_CERT$OPT_XHTTP_KEY$OPT_XHTTP_CERT_HOOK$OPT_XHTTP_WS_KEEPALIVE$OPT_XHTTP_WS_PORT$OPT_XHTTP_WS_PUBLIC_PORT$OPT_XHTTP_WS_PATH$OPT_XHTTP_WS_HEARTBEAT$OPT_BLOCK_BT$OPT_ALLOW_PRIVATE$OPT_CORE_VERSION$OPT_FORMAT" ||
       "$OPT_SKIP_TARGET_CHECK" == "1" || "$OPT_NO_FIREWALL" == "1" ||
       "$OPT_OVERWRITE_CONFIG" == "1" || "$OPT_QR" == "1" || "$OPT_PURGE" == "1" ]]; then
       die err_refresh_options
@@ -438,6 +568,7 @@ resolve_protocols() {
     [[ "$CFG_VLESS" == "1" ]] && active+=(vless)
     [[ "$CFG_SS" == "1" ]] && active+=(ss)
     [[ "$CFG_HY2" == "1" ]] && active+=(hy2)
+    [[ "$CFG_XHTTP" == "1" ]] && active+=(xhttp)
     ((${#active[@]} > 0)) && current="$(join_by , "${active[@]}")"
   fi
   if [[ -n "$OPT_PROTOCOLS" ]]; then
@@ -449,6 +580,7 @@ resolve_protocols() {
   CFG_VLESS="$PARSED_VLESS"
   CFG_SS="$PARSED_SS"
   CFG_HY2="$PARSED_HY2"
+  CFG_XHTTP="$PARSED_XHTTP"
 }
 
 resolve_server_addr() {
@@ -799,17 +931,253 @@ resolve_sockopt() {
   check_sockopt_support "$CFG_CORE"
 }
 
+xhttp_ws_port_node_conflict() {
+  local p="$1"
+  [[ "$p" == "$CFG_XHTTP_PORT" ]] && return 0
+  [[ "$CFG_VLESS" == "1" && "$p" == "$CFG_VLESS_PORT" ]] && return 0
+  [[ "$CFG_SS" == "1" && "$CFG_SS_NETWORK" != "udp" && "$p" == "$CFG_SS_PORT" ]] && return 0
+  return 1
+}
+
+resolve_xhttp() {
+  local prev_tls="$CFG_XHTTP_TLS" prev_ws="$CFG_XHTTP_WS"
+  local old_port="$CFG_XHTTP_PORT" old_public_port="$CFG_XHTTP_PUBLIC_PORT"
+  local old_ws_port="$CFG_XHTTP_WS_PORT" default_host="$CFG_XHTTP_HOST" default_port=""
+  local cert_file="" key_file="" abs_cert="" abs_key="" default_ws_port="" ca_ans="" ws_def="no"
+
+  check_xhttp_core_support "$CFG_CORE"
+
+  if [[ -n "$OPT_XHTTP_TLS" ]]; then
+    CFG_XHTTP_TLS="$OPT_XHTTP_TLS"
+  elif [[ -n "$OPT_XHTTP_CERT" ]]; then
+    CFG_XHTTP_TLS="files"
+  else
+    ask_valid CFG_XHTTP_TLS "${CFG_XHTTP_TLS:-none}" norm_xhttp_tls prompt_xhttp_tls
+  fi
+
+  if [[ -z "$default_host" ]] && valid_domain "$CFG_SERVER_ADDR"; then
+    default_host="$CFG_SERVER_ADDR"
+  fi
+  if [[ -n "$OPT_XHTTP_HOST" ]]; then
+    CFG_XHTTP_HOST="$OPT_XHTTP_HOST"
+  elif [[ "$TB_INTERACTIVE" == "1" ]]; then
+    ask_valid CFG_XHTTP_HOST "$default_host" norm_domain prompt_xhttp_host
+  elif [[ -n "$default_host" ]]; then
+    CFG_XHTTP_HOST="$default_host"
+  else
+    die err_xhttp_host_required
+  fi
+
+  if [[ "$CFG_XHTTP_TLS" == "none" ]]; then
+    if [[ -n "$OPT_XHTTP_LISTEN" ]]; then
+      hy2_hop_is_loopback "$OPT_XHTTP_LISTEN" || die err_xhttp_none_loopback "$OPT_XHTTP_LISTEN"
+      CFG_XHTTP_LISTEN="$OPT_XHTTP_LISTEN"
+    elif [[ "$prev_tls" != "none" ]] || ! hy2_hop_is_loopback "$CFG_XHTTP_LISTEN"; then
+      CFG_XHTTP_LISTEN="127.0.0.1"
+    fi
+
+    default_port="$CFG_XHTTP_PORT"
+    if [[ "$prev_tls" != "none" || -z "$default_port" ]]; then
+      default_port="$TB_XHTTP_DEFAULT_PORT"
+    fi
+    if [[ -n "$OPT_XHTTP_PORT" ]]; then
+      CFG_XHTTP_PORT="$OPT_XHTTP_PORT"
+    else
+      ask_valid CFG_XHTTP_PORT "$default_port" norm_port prompt_xhttp_port
+    fi
+
+    if [[ -n "$OPT_XHTTP_PUBLIC_PORT" ]]; then
+      CFG_XHTTP_PUBLIC_PORT="$OPT_XHTTP_PUBLIC_PORT"
+    elif [[ "$prev_tls" != "none" || -z "$CFG_XHTTP_PUBLIC_PORT" ]]; then
+      CFG_XHTTP_PUBLIC_PORT="$TB_XHTTP_DEFAULT_PUBLIC_PORT"
+    fi
+  else
+    if [[ -n "$OPT_XHTTP_LISTEN" ]]; then
+      CFG_XHTTP_LISTEN="$OPT_XHTTP_LISTEN"
+    elif [[ "$prev_tls" == "none" ]] && hy2_hop_is_loopback "$CFG_XHTTP_LISTEN"; then
+      CFG_XHTTP_LISTEN=""
+    fi
+
+    default_port="$CFG_XHTTP_PORT"
+    if [[ "$prev_tls" != "files" || -z "$default_port" ]]; then
+      default_port="$TB_XHTTP_DEFAULT_PUBLIC_PORT"
+    fi
+    if [[ -n "$OPT_XHTTP_PORT" ]]; then
+      CFG_XHTTP_PORT="$OPT_XHTTP_PORT"
+    else
+      ask_valid CFG_XHTTP_PORT "$default_port" norm_port prompt_xhttp_port
+    fi
+
+    if [[ -n "$OPT_XHTTP_PUBLIC_PORT" ]]; then
+      CFG_XHTTP_PUBLIC_PORT="$OPT_XHTTP_PUBLIC_PORT"
+    elif [[ "$prev_tls" != "files" || -z "$CFG_XHTTP_PUBLIC_PORT" ]] ||
+      { [[ -n "$OPT_XHTTP_PORT" && "$CFG_XHTTP_PUBLIC_PORT" == "$old_port" ]]; }; then
+      CFG_XHTTP_PUBLIC_PORT="$CFG_XHTTP_PORT"
+    fi
+  fi
+
+  if [[ "$OPT_XHTTP_CONNECT_ADDR" == "none" ]]; then
+    CFG_XHTTP_CONNECT_ADDR=""
+  elif [[ -n "$OPT_XHTTP_CONNECT_ADDR" ]]; then
+    CFG_XHTTP_CONNECT_ADDR="$OPT_XHTTP_CONNECT_ADDR"
+  elif [[ "$TB_INTERACTIVE" == "1" ]]; then
+    ask_valid ca_ans "${CFG_XHTTP_CONNECT_ADDR:-none}" norm_xhttp_connect_addr prompt_xhttp_connect_addr
+    if [[ "$ca_ans" == "none" ]]; then
+      CFG_XHTTP_CONNECT_ADDR=""
+    else
+      CFG_XHTTP_CONNECT_ADDR="$ca_ans"
+    fi
+  fi
+  [[ "$CFG_XHTTP_CONNECT_ADDR" == "$CFG_XHTTP_HOST" ]] && CFG_XHTTP_CONNECT_ADDR=""
+
+  [[ -n "$OPT_XHTTP_PATH" ]] && CFG_XHTTP_PATH="$OPT_XHTTP_PATH"
+  CFG_XHTTP_MODE="${OPT_XHTTP_MODE:-${CFG_XHTTP_MODE:-auto}}"
+  CFG_XHTTP_CLIENT_MODE="${OPT_XHTTP_CLIENT_MODE:-${CFG_XHTTP_CLIENT_MODE:-packet-up}}"
+  CFG_XHTTP_ALPN="${OPT_XHTTP_ALPN:-${CFG_XHTTP_ALPN:-h2}}"
+  if [[ "$CFG_XHTTP_ALPN" == "h3" ]]; then
+    log_warn warn_xhttp_alpn_h3
+  fi
+
+  if [[ "$CFG_XHTTP_TLS" == "files" ]]; then
+    if [[ -n "$OPT_XHTTP_CERT" ]]; then
+      cert_file="$OPT_XHTTP_CERT"
+      key_file="$OPT_XHTTP_KEY"
+    elif [[ "$prev_tls" != "files" || -z "$CFG_XHTTP_CERT" || -z "$CFG_XHTTP_KEY" ]]; then
+      if [[ "$TB_INTERACTIVE" == "1" ]]; then
+        ask_valid cert_file "" norm_readable_file prompt_xhttp_cert
+        ask_valid key_file "" norm_readable_file prompt_xhttp_key
+      else
+        die err_xhttp_files_required
+      fi
+    fi
+
+    if [[ -n "$cert_file" ]]; then
+      tls_validate_pair_files "$cert_file" "$key_file" || die err_xhttp_cert_pair "$cert_file" "$key_file"
+      abs_cert="$(tls_abs_path "$cert_file")" || die err_xhttp_cert_pair "$cert_file" "$key_file"
+      abs_key="$(tls_abs_path "$key_file")" || die err_xhttp_cert_pair "$cert_file" "$key_file"
+      tls_cert_matches_name "$cert_file" "$CFG_XHTTP_HOST" || die err_xhttp_cert_host_mismatch "$CFG_XHTTP_HOST"
+      CFG_XHTTP_CERT="$TLS_CERT_PEM"
+      CFG_XHTTP_KEY="$TLS_KEY_PEM"
+      CFG_XHTTP_CERT_SHA256="$TLS_CERT_SHA256"
+      CFG_XHTTP_CERT_FILE="$abs_cert"
+      CFG_XHTTP_KEY_FILE="$abs_key"
+    else
+      tls_validate_pem_pair "$CFG_XHTTP_CERT" "$CFG_XHTTP_KEY" || die err_xhttp_tls_invalid
+      CFG_XHTTP_CERT_SHA256="$TLS_CERT_SHA256"
+      tls_pem_matches_name "$CFG_XHTTP_CERT" "$CFG_XHTTP_HOST" || die err_xhttp_cert_host_mismatch "$CFG_XHTTP_HOST"
+    fi
+
+    case "$OPT_XHTTP_CERT_HOOK" in
+      certbot) CFG_XHTTP_CERTBOT_HOOK=1 ;;
+      none) CFG_XHTTP_CERTBOT_HOOK=0 ;;
+    esac
+    if [[ "$CFG_XHTTP_CERTBOT_HOOK" == "1" ]]; then
+      if [[ -z "$CFG_XHTTP_CERT_FILE" || -z "$CFG_XHTTP_KEY_FILE" ]]; then
+        die err_xhttp_cert_sources_missing
+      fi
+      certbot_lineage_from_pair "$CFG_XHTTP_CERT_FILE" "$CFG_XHTTP_KEY_FILE" >/dev/null ||
+        die err_hy2_hook_certbot_paths "$(certbot_live_root)"
+    fi
+  else
+    if [[ "$OPT_XHTTP_CERT_HOOK" == "certbot" ]]; then
+      die err_xhttp_hook_not_none
+    fi
+    CFG_XHTTP_CERT=""
+    CFG_XHTTP_KEY=""
+    CFG_XHTTP_CERT_SHA256=""
+    CFG_XHTTP_CERT_FILE=""
+    CFG_XHTTP_KEY_FILE=""
+    CFG_XHTTP_CERTBOT_HOOK=0
+  fi
+
+  if [[ -n "$OPT_XHTTP_WS_KEEPALIVE" ]]; then
+    CFG_XHTTP_WS="$OPT_XHTTP_WS_KEEPALIVE"
+  elif [[ "$TB_INTERACTIVE" == "1" ]]; then
+    [[ "$CFG_XHTTP_WS" == "1" ]] && ws_def="yes"
+    ask_valid CFG_XHTTP_WS "$ws_def" norm_yes_no prompt_xhttp_ws_keepalive
+  fi
+
+  if [[ "$CFG_XHTTP_WS" != "1" ]]; then
+    if [[ -n "$OPT_XHTTP_WS_PORT$OPT_XHTTP_WS_PUBLIC_PORT$OPT_XHTTP_WS_PATH$OPT_XHTTP_WS_HEARTBEAT" ]]; then
+      die err_xhttp_ws_not_enabled
+    fi
+    CFG_XHTTP_WS_PORT=""
+    CFG_XHTTP_WS_PUBLIC_PORT=""
+    CFG_XHTTP_WS_PATH=""
+    CFG_XHTTP_WS_HEARTBEAT="$TB_XHTTP_DEFAULT_WS_HEARTBEAT"
+    return 0
+  fi
+
+  if [[ "$CFG_XHTTP_TLS" == "none" ]]; then
+    if [[ -n "$OPT_XHTTP_WS_PORT" ]]; then
+      CFG_XHTTP_WS_PORT="$OPT_XHTTP_WS_PORT"
+    elif [[ "$prev_tls" != "none" || "$prev_ws" != "1" || -z "$CFG_XHTTP_WS_PORT" ]] ||
+      [[ "$CFG_XHTTP_WS_PORT" == "$TB_XHTTP_DEFAULT_WS_PORT" && "$CFG_XHTTP_WS_PORT" == "$CFG_XHTTP_PORT" ]]; then
+      default_ws_port="$TB_XHTTP_DEFAULT_WS_PORT"
+      if [[ "$default_ws_port" == "$CFG_XHTTP_PORT" ]]; then
+        default_ws_port=$((CFG_XHTTP_PORT + 1))
+        log_warn warn_xhttp_ws_port_conflict "$TB_XHTTP_DEFAULT_WS_PORT" "$default_ws_port"
+      fi
+      CFG_XHTTP_WS_PORT="$default_ws_port"
+    fi
+    if [[ -n "$OPT_XHTTP_WS_PUBLIC_PORT" ]]; then
+      CFG_XHTTP_WS_PUBLIC_PORT="$OPT_XHTTP_WS_PUBLIC_PORT"
+    elif [[ "$prev_tls" != "none" || "$prev_ws" != "1" || -z "$CFG_XHTTP_WS_PUBLIC_PORT" ]] ||
+      { [[ -n "$OPT_XHTTP_PUBLIC_PORT" && "$CFG_XHTTP_WS_PUBLIC_PORT" == "$old_public_port" ]]; }; then
+      CFG_XHTTP_WS_PUBLIC_PORT="$CFG_XHTTP_PUBLIC_PORT"
+    fi
+  else
+    if [[ -n "$OPT_XHTTP_WS_PORT" ]]; then
+      CFG_XHTTP_WS_PORT="$OPT_XHTTP_WS_PORT"
+    elif [[ "$prev_tls" != "files" || "$prev_ws" != "1" || -z "$CFG_XHTTP_WS_PORT" ]] ||
+      { [[ "$CFG_XHTTP_WS_PORT" == "$TB_XHTTP_DEFAULT_WS_FILES_PORT" ]] && xhttp_ws_port_node_conflict "$CFG_XHTTP_WS_PORT"; }; then
+      default_ws_port="$TB_XHTTP_DEFAULT_WS_FILES_PORT"
+      if xhttp_ws_port_node_conflict "$default_ws_port"; then
+        default_ws_port=2053
+        log_warn warn_xhttp_ws_port_conflict "$TB_XHTTP_DEFAULT_WS_FILES_PORT" "$default_ws_port"
+      elif port_conflict tcp "$default_ws_port" "$(core_call process)" >/dev/null 2>&1; then
+        default_ws_port=2053
+        log_warn warn_xhttp_ws_port_busy "$TB_XHTTP_DEFAULT_WS_FILES_PORT" "$default_ws_port"
+      fi
+      CFG_XHTTP_WS_PORT="$default_ws_port"
+    fi
+    if [[ -n "$OPT_XHTTP_WS_PUBLIC_PORT" ]]; then
+      CFG_XHTTP_WS_PUBLIC_PORT="$OPT_XHTTP_WS_PUBLIC_PORT"
+    elif [[ "$prev_tls" != "files" || "$prev_ws" != "1" || -z "$CFG_XHTTP_WS_PUBLIC_PORT" ]] ||
+      { [[ "$CFG_XHTTP_WS_PORT" != "$old_ws_port" && "$CFG_XHTTP_WS_PUBLIC_PORT" == "$old_ws_port" ]]; }; then
+      CFG_XHTTP_WS_PUBLIC_PORT="$CFG_XHTTP_WS_PORT"
+    fi
+  fi
+
+  [[ -n "$OPT_XHTTP_WS_PATH" ]] && CFG_XHTTP_WS_PATH="$OPT_XHTTP_WS_PATH"
+  if [[ -n "$CFG_XHTTP_PATH" && -n "$CFG_XHTTP_WS_PATH" ]] &&
+    xhttp_paths_conflict "$CFG_XHTTP_PATH" "$CFG_XHTTP_WS_PATH"; then
+    die err_xhttp_path_conflict "$CFG_XHTTP_PATH" "$CFG_XHTTP_WS_PATH"
+  fi
+  CFG_XHTTP_WS_HEARTBEAT="${OPT_XHTTP_WS_HEARTBEAT:-${CFG_XHTTP_WS_HEARTBEAT:-$TB_XHTTP_DEFAULT_WS_HEARTBEAT}}"
+  if ((10#$CFG_XHTTP_WS_HEARTBEAT > 60)); then
+    log_warn warn_xhttp_ws_heartbeat_cf "$CFG_XHTTP_WS_HEARTBEAT"
+  fi
+}
+
 resolve_params() {
+  local -a tcp_ports=() seen_ports=()
+  local p
   resolve_core
   resolve_sockopt
   resolve_protocols
-  resolve_server_addr
 
   [[ -n "$OPT_NAME" ]] && CFG_NODE_NAME="$OPT_NAME"
   [[ -n "$CFG_NODE_NAME" ]] || CFG_NODE_NAME="ToastBox"
   [[ -n "$OPT_LISTEN" ]] && CFG_LISTEN="$OPT_LISTEN"
   [[ -n "$OPT_BLOCK_BT" ]] && CFG_BLOCK_BT="$OPT_BLOCK_BT"
   [[ -n "$OPT_ALLOW_PRIVATE" ]] && CFG_ALLOW_PRIVATE="$OPT_ALLOW_PRIVATE"
+
+  if [[ "$CFG_VLESS" == "1" || "$CFG_SS" == "1" || "$CFG_HY2" == "1" ]]; then
+    resolve_server_addr
+  elif [[ -n "$OPT_SERVER_ADDR" ]]; then
+    CFG_SERVER_ADDR="$OPT_SERVER_ADDR"
+  fi
 
   if [[ "$CFG_VLESS" == "1" ]]; then resolve_vless; fi
   if [[ "$CFG_HY2" == "1" ]]; then
@@ -831,11 +1199,42 @@ resolve_params() {
     CFG_HY2_HOP_INTERVAL_MAX=30
   fi
   if [[ "$CFG_SS" == "1" ]]; then resolve_ss; fi
-
-  if [[ "$CFG_VLESS" == "1" && "$CFG_SS" == "1" &&
-    "$CFG_VLESS_PORT" == "$CFG_SS_PORT" && "$CFG_SS_NETWORK" != "udp" ]]; then
-    die err_port_same "$CFG_VLESS_PORT"
+  if [[ "$CFG_XHTTP" == "1" ]]; then
+    resolve_xhttp
+    if [[ -z "$CFG_SERVER_ADDR" ]] ||
+      [[ "$CFG_VLESS$CFG_SS$CFG_HY2" == "000" && -z "$OPT_SERVER_ADDR" ]]; then
+      CFG_SERVER_ADDR="$CFG_XHTTP_HOST"
+    fi
+  else
+    if [[ -n "$OPT_XHTTP_TLS$OPT_XHTTP_LISTEN$OPT_XHTTP_PORT$OPT_XHTTP_PUBLIC_PORT$OPT_XHTTP_CONNECT_ADDR$OPT_XHTTP_HOST$OPT_XHTTP_PATH$OPT_XHTTP_MODE$OPT_XHTTP_CLIENT_MODE$OPT_XHTTP_ALPN$OPT_XHTTP_CERT$OPT_XHTTP_KEY$OPT_XHTTP_CERT_HOOK$OPT_XHTTP_WS_KEEPALIVE$OPT_XHTTP_WS_PORT$OPT_XHTTP_WS_PUBLIC_PORT$OPT_XHTTP_WS_PATH$OPT_XHTTP_WS_HEARTBEAT" ]]; then
+      die err_xhttp_not_enabled
+    fi
+    CFG_XHTTP_CERT=""
+    CFG_XHTTP_KEY=""
+    CFG_XHTTP_CERT_SHA256=""
+    CFG_XHTTP_CERT_FILE=""
+    CFG_XHTTP_KEY_FILE=""
+    CFG_XHTTP_CERTBOT_HOOK=0
+    CFG_XHTTP_WS=0
+    CFG_XHTTP_WS_PORT=""
+    CFG_XHTTP_WS_PUBLIC_PORT=""
+    CFG_XHTTP_WS_PATH=""
+    CFG_XHTTP_WS_HEARTBEAT="$TB_XHTTP_DEFAULT_WS_HEARTBEAT"
   fi
+
+  [[ "$CFG_VLESS" == "1" ]] && tcp_ports+=("$CFG_VLESS_PORT")
+  [[ "$CFG_SS" == "1" && "$CFG_SS_NETWORK" != "udp" ]] && tcp_ports+=("$CFG_SS_PORT")
+  if [[ "$CFG_XHTTP" == "1" ]]; then
+    tcp_ports+=("$CFG_XHTTP_PORT")
+    [[ "$CFG_XHTTP_WS" == "1" ]] && tcp_ports+=("$CFG_XHTTP_WS_PORT")
+  fi
+  for p in "${tcp_ports[@]}"; do
+    if in_list "$p" "${seen_ports[@]}"; then
+      die err_port_same "$p"
+    fi
+    seen_ports+=("$p")
+  done
+
   if [[ "$CFG_HY2" == "1" && "$CFG_SS" == "1" &&
     "$CFG_HY2_PORT" == "$CFG_SS_PORT" && "$CFG_SS_NETWORK" != "tcp" ]]; then
     die err_port_same_udp "$CFG_HY2_PORT"
@@ -846,8 +1245,7 @@ resolve_params() {
     die err_hy2_hop_ss_conflict "$CFG_SS_PORT" "$CFG_HY2_HOP_PORTS"
   fi
   if [[ "$CFG_HY2" == "1" && ("$TB_HY2_ACME_NEED_ISSUE" == "1" || ("$CFG_HY2_ACME" == "1" && "$CFG_HY2_CERTBOT_HOOK" == "1")) ]]; then
-    if [[ "$CFG_VLESS" == "1" && "$CFG_VLESS_PORT" == "80" ]] ||
-      { [[ "$CFG_SS" == "1" && "$CFG_SS_PORT" == "80" && "$CFG_SS_NETWORK" != "udp" ]]; }; then
+    if in_list "80" "${tcp_ports[@]}"; then
       die err_hy2_acme_port80_conflict
     fi
   fi
@@ -897,6 +1295,20 @@ print_plan() {
       fi
     fi
   fi
+  if [[ "$CFG_XHTTP" == "1" ]]; then
+    printf '  VLESS-XHTTP: TLS %s, %s:%s/tcp -> %s:%s, host %s, mode %s/%s, alpn %s\n' \
+      "$CFG_XHTTP_TLS" "${CFG_XHTTP_LISTEN:-*}" "$CFG_XHTTP_PORT" \
+      "$(uri_host "$(xhttp_dial_addr)")" "$CFG_XHTTP_PUBLIC_PORT" \
+      "$CFG_XHTTP_HOST" "$CFG_XHTTP_MODE" "$CFG_XHTTP_CLIENT_MODE" "$CFG_XHTTP_ALPN" >&2
+    if [[ "$CFG_XHTTP_CERTBOT_HOOK" == "1" ]]; then
+      printf '  %s: certbot (%s)\n' "$(msg label_cert_hook)" "$CFG_XHTTP_CERT_FILE" >&2
+    fi
+    if [[ "$CFG_XHTTP_WS" == "1" ]]; then
+      printf '  VLESS-WS-KeepAlive: %s:%s/tcp -> :%s, heartbeat %ss\n' \
+        "${CFG_XHTTP_LISTEN:-*}" "$CFG_XHTTP_WS_PORT" "$CFG_XHTTP_WS_PUBLIC_PORT" \
+        "$CFG_XHTTP_WS_HEARTBEAT" >&2
+    fi
+  fi
   printf '\n' >&2
 }
 
@@ -930,6 +1342,14 @@ preflight_ports() {
     fi
     if [[ -n "$CFG_HY2_HOP_PORTS" ]] && procs="$(hy2_hop_port_conflicts "$CFG_HY2_HOP_PORTS" "${own[@]}")"; then
       die err_hy2_hop_ports_in_use "$procs"
+    fi
+  fi
+  if [[ "$CFG_XHTTP" == "1" ]]; then
+    if procs="$(port_conflict tcp "$CFG_XHTTP_PORT" "${own[@]}")"; then
+      die err_port_in_use "$CFG_XHTTP_PORT/tcp" "$procs"
+    fi
+    if [[ "$CFG_XHTTP_WS" == "1" ]] && procs="$(port_conflict tcp "$CFG_XHTTP_WS_PORT" "${own[@]}")"; then
+      die err_port_in_use "$CFG_XHTTP_WS_PORT/tcp" "$procs"
     fi
   fi
   return 0
@@ -969,6 +1389,7 @@ ensure_core() {
   TB_PREV_CORE_BIN=""
   TB_PREV_CORE_ACTIVE=0
   check_sockopt_support "$CFG_CORE"
+  check_xhttp_core_support "$CFG_CORE"
   check_requested_core_version "$CFG_CORE"
   min="$(core_call min_version)"
   if [[ "$force" == "1" || -n "$OPT_CORE_VERSION" ]] || ! core_call is_installed; then
@@ -1049,6 +1470,7 @@ apply_config() {
   path="$(core_call config_path)"
   svc="$(core_call service)"
   check_sockopt_support "$CFG_CORE"
+  check_xhttp_core_support "$CFG_CORE"
 
   if ! core_call render >"$new"; then
     log_err err_render
@@ -1110,6 +1532,10 @@ sync_firewall() {
   [[ "$CFG_HY2" == "1" ]] && rules+=("$CFG_HY2_PORT/udp")
   if [[ "$CFG_HY2" == "1" && "$CFG_HY2_ACME" == "1" && "$CFG_HY2_CERTBOT_HOOK" == "1" ]]; then
     rules+=("80/tcp")
+  fi
+  if [[ "$CFG_XHTTP" == "1" && "$CFG_XHTTP_TLS" == "files" ]]; then
+    rules+=("$CFG_XHTTP_PORT/tcp")
+    [[ "$CFG_XHTTP_WS" == "1" ]] && rules+=("$CFG_XHTTP_WS_PORT/tcp")
   fi
   fw_sync "${rules[@]}"
 }
@@ -1193,7 +1619,8 @@ cmd_install() {
 
   preflight_ports "$old_proc"
   hy2_hop_preflight
-  if [[ "$CFG_HY2" == "1" && "$CFG_HY2_CERTBOT_HOOK" == "1" ]]; then
+  if [[ ("$CFG_HY2" == "1" && "$CFG_HY2_CERTBOT_HOOK" == "1") ||
+    ("$CFG_XHTTP" == "1" && "$CFG_XHTTP_CERTBOT_HOOK" == "1") ]]; then
     certbot_hook_preflight
   fi
   if [[ "$CFG_HY2" == "1" && "$TB_HY2_ACME_NEED_ISSUE" == "1" ]]; then
@@ -1240,7 +1667,8 @@ cmd_install() {
     die err_apply
   fi
 
-  if [[ "$CFG_HY2" == "1" && "$CFG_HY2_CERTBOT_HOOK" == "1" ]]; then
+  if [[ ("$CFG_HY2" == "1" && "$CFG_HY2_CERTBOT_HOOK" == "1") ||
+    ("$CFG_XHTTP" == "1" && "$CFG_XHTTP_CERTBOT_HOOK" == "1") ]]; then
     if ! certbot_ensure_entrypoint || ! certbot_hook_install; then
       certbot_hook_restore "$hook_backup"
       hy2_hop_restore "$hop_backup"
@@ -1303,6 +1731,7 @@ cmd_update() {
   require_state
 
   check_sockopt_support "$CFG_CORE"
+  check_xhttp_core_support "$CFG_CORE"
   core_call render >"$TB_TMP/pre-check.json" || die err_render
   ensure_core 1
   # Re-render with the current templates and restart on the new binary.
@@ -1337,7 +1766,10 @@ cmd_rotate() {
 }
 
 cmd_refresh_cert() {
-  local verify_name old_cert old_key old_sha
+  local hy2_files=0 xhttp_files=0 changed=0 had_error=0
+  local renewed="${RENEWED_LINEAGE:-}" expected_dir=""
+  local verify_name old_hy2_cert old_hy2_key old_hy2_sha
+  local old_xhttp_cert old_xhttp_key old_xhttp_sha
 
   require_root
   require_systemd
@@ -1345,40 +1777,104 @@ cmd_refresh_cert() {
   tb_acquire_lock
   require_state
 
-  [[ "$CFG_HY2" == "1" ]] || die err_refresh_requires_hy2
-  [[ "$CFG_HY2_TLS" == "files" ]] || die err_refresh_requires_files
-  if [[ -z "$CFG_HY2_CERT_FILE" || -z "$CFG_HY2_KEY_FILE" ]]; then
-    die err_hy2_cert_sources_missing
+  [[ "$CFG_HY2" == "1" && "$CFG_HY2_TLS" == "files" ]] && hy2_files=1
+  [[ "$CFG_XHTTP" == "1" && "$CFG_XHTTP_TLS" == "files" ]] && xhttp_files=1
+
+  if [[ "$hy2_files" != "1" && "$xhttp_files" != "1" ]]; then
+    if [[ "$CFG_HY2" != "1" && "$CFG_XHTTP" != "1" ]]; then
+      die err_refresh_requires_protocol
+    fi
+    die err_refresh_requires_files
   fi
 
-  tls_validate_pair_files "$CFG_HY2_CERT_FILE" "$CFG_HY2_KEY_FILE" ||
-    die err_hy2_cert_pair "$CFG_HY2_CERT_FILE" "$CFG_HY2_KEY_FILE"
-  verify_name="${CFG_HY2_SNI:-$CFG_SERVER_ADDR}"
-  tls_cert_matches_name "$CFG_HY2_CERT_FILE" "$verify_name" ||
-    die err_hy2_cert_sni_mismatch "$verify_name"
+  if [[ -n "$renewed" ]]; then
+    renewed="${renewed%/}"
+    if [[ "$hy2_files" == "1" ]]; then
+      expected_dir="$(dirname -- "${CFG_HY2_CERT_FILE:-}")"
+      [[ "${expected_dir%/}" == "$renewed" ]] || hy2_files=0
+    fi
+    if [[ "$xhttp_files" == "1" ]]; then
+      expected_dir="$(dirname -- "${CFG_XHTTP_CERT_FILE:-}")"
+      [[ "${expected_dir%/}" == "$renewed" ]] || xhttp_files=0
+    fi
+    if [[ "$hy2_files" != "1" && "$xhttp_files" != "1" ]]; then
+      return 0
+    fi
+  fi
 
-  if [[ "$TLS_CERT_PEM" == "$CFG_HY2_CERT" && "$TLS_KEY_PEM" == "$CFG_HY2_KEY" ]]; then
-    log_info info_hy2_cert_unchanged
+  old_hy2_cert="$CFG_HY2_CERT"
+  old_hy2_key="$CFG_HY2_KEY"
+  old_hy2_sha="$CFG_HY2_CERT_SHA256"
+  old_xhttp_cert="$CFG_XHTTP_CERT"
+  old_xhttp_key="$CFG_XHTTP_KEY"
+  old_xhttp_sha="$CFG_XHTTP_CERT_SHA256"
+
+  if [[ "$hy2_files" == "1" ]]; then
+    verify_name="${CFG_HY2_SNI:-$CFG_SERVER_ADDR}"
+    if [[ -z "$CFG_HY2_CERT_FILE" || -z "$CFG_HY2_KEY_FILE" ]]; then
+      log_err err_hy2_cert_sources_missing
+      had_error=1
+    elif ! tls_validate_pair_files "$CFG_HY2_CERT_FILE" "$CFG_HY2_KEY_FILE"; then
+      log_err err_hy2_cert_pair "$CFG_HY2_CERT_FILE" "$CFG_HY2_KEY_FILE"
+      had_error=1
+    elif ! tls_cert_matches_name "$CFG_HY2_CERT_FILE" "$verify_name"; then
+      log_err err_hy2_cert_sni_mismatch "$verify_name"
+      had_error=1
+    elif [[ "$TLS_CERT_PEM" != "$CFG_HY2_CERT" || "$TLS_KEY_PEM" != "$CFG_HY2_KEY" ]]; then
+      CFG_HY2_CERT="$TLS_CERT_PEM"
+      CFG_HY2_KEY="$TLS_KEY_PEM"
+      CFG_HY2_CERT_SHA256="$TLS_CERT_SHA256"
+      changed=1
+    fi
+  fi
+
+  if [[ "$xhttp_files" == "1" ]]; then
+    if [[ -z "$CFG_XHTTP_CERT_FILE" || -z "$CFG_XHTTP_KEY_FILE" ]]; then
+      log_err err_xhttp_cert_sources_missing
+      had_error=1
+    elif ! tls_validate_pair_files "$CFG_XHTTP_CERT_FILE" "$CFG_XHTTP_KEY_FILE"; then
+      log_err err_xhttp_cert_pair "$CFG_XHTTP_CERT_FILE" "$CFG_XHTTP_KEY_FILE"
+      had_error=1
+    elif ! tls_cert_matches_name "$CFG_XHTTP_CERT_FILE" "$CFG_XHTTP_HOST"; then
+      log_err err_xhttp_cert_host_mismatch "$CFG_XHTTP_HOST"
+      had_error=1
+    elif [[ "$TLS_CERT_PEM" != "$CFG_XHTTP_CERT" || "$TLS_KEY_PEM" != "$CFG_XHTTP_KEY" ]]; then
+      CFG_XHTTP_CERT="$TLS_CERT_PEM"
+      CFG_XHTTP_KEY="$TLS_KEY_PEM"
+      CFG_XHTTP_CERT_SHA256="$TLS_CERT_SHA256"
+      changed=1
+    fi
+  fi
+
+  if [[ "$changed" != "1" ]]; then
+    [[ "$had_error" == "1" ]] && exit 1
+    log_info info_cert_unchanged
     return 0
   fi
 
   core_call is_installed || die err_core_install "$CFG_CORE"
-  old_cert="$CFG_HY2_CERT"
-  old_key="$CFG_HY2_KEY"
-  old_sha="$CFG_HY2_CERT_SHA256"
-  CFG_HY2_CERT="$TLS_CERT_PEM"
-  CFG_HY2_KEY="$TLS_KEY_PEM"
-  CFG_HY2_CERT_SHA256="$TLS_CERT_SHA256"
-
-  apply_config "" "if-active" || die err_apply
+  if ! apply_config "" "if-active"; then
+    CFG_HY2_CERT="$old_hy2_cert"
+    CFG_HY2_KEY="$old_hy2_key"
+    CFG_HY2_CERT_SHA256="$old_hy2_sha"
+    CFG_XHTTP_CERT="$old_xhttp_cert"
+    CFG_XHTTP_KEY="$old_xhttp_key"
+    CFG_XHTTP_CERT_SHA256="$old_xhttp_sha"
+    die err_apply
+  fi
   if ! state_save; then
-    CFG_HY2_CERT="$old_cert"
-    CFG_HY2_KEY="$old_key"
-    CFG_HY2_CERT_SHA256="$old_sha"
+    CFG_HY2_CERT="$old_hy2_cert"
+    CFG_HY2_KEY="$old_hy2_key"
+    CFG_HY2_CERT_SHA256="$old_hy2_sha"
+    CFG_XHTTP_CERT="$old_xhttp_cert"
+    CFG_XHTTP_KEY="$old_xhttp_key"
+    CFG_XHTTP_CERT_SHA256="$old_xhttp_sha"
     rollback_applied_config
     die err_state_save "$TB_STATE_FILE"
   fi
-  log_ok ok_hy2_cert_refreshed
+  log_ok ok_cert_refreshed
+  [[ "$had_error" == "1" ]] && exit 1
+  return 0
 }
 
 cmd_uninstall() {

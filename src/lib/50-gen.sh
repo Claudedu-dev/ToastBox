@@ -51,6 +51,24 @@ gen_hy2_password() {
   openssl rand -base64 24 | tr '+/' '-_' | tr -d '=\n'
 }
 
+valid_xhttp_path() {
+  local p="$1"
+  ((${#p} >= 2 && ${#p} <= 128)) || return 1
+  [[ "$p" =~ ^/[A-Za-z0-9._~/-]+$ ]] || return 1
+  [[ "$p" != "/" && "$p" != *//* && "$p" != *..* && "$p" != */ ]] || return 1
+  [[ "/${p#/}/" != */./* ]]
+}
+
+gen_xhttp_path() {
+  printf '/%s' "$(openssl rand -hex 8)"
+}
+
+xhttp_paths_conflict() {
+  local a="$1" b="$2"
+  [[ -n "$a" && -n "$b" ]] || return 1
+  [[ "$a" == "$b" || "$b" == "$a/"* || "$a" == "$b/"* ]]
+}
+
 gen_uuid() {
   local uuid=""
   case "$CFG_CORE" in
@@ -133,6 +151,21 @@ ensure_credentials() {
       CFG_HY2_CERT_SHA256="$(tls_cert_sha256_pem "$CFG_HY2_CERT")" || die err_hy2_tls_invalid
     fi
   fi
+  if [[ "$CFG_XHTTP" == "1" ]]; then
+    valid_uuid "$CFG_XHTTP_UUID" || CFG_XHTTP_UUID="$(gen_uuid)"
+    valid_xhttp_path "$CFG_XHTTP_PATH" || CFG_XHTTP_PATH="$(gen_xhttp_path)"
+    if [[ "$CFG_XHTTP_WS" == "1" ]]; then
+      if ! valid_xhttp_path "$CFG_XHTTP_WS_PATH" || xhttp_paths_conflict "$CFG_XHTTP_PATH" "$CFG_XHTTP_WS_PATH"; then
+        CFG_XHTTP_WS_PATH="$(gen_xhttp_path)"
+        while xhttp_paths_conflict "$CFG_XHTTP_PATH" "$CFG_XHTTP_WS_PATH"; do
+          CFG_XHTTP_WS_PATH="$(gen_xhttp_path)"
+        done
+      fi
+    fi
+    if [[ "$CFG_XHTTP_TLS" == "files" && -z "$CFG_XHTTP_CERT_SHA256" && -n "$CFG_XHTTP_CERT" ]]; then
+      CFG_XHTTP_CERT_SHA256="$(tls_cert_sha256_pem "$CFG_XHTTP_CERT")" || die err_xhttp_tls_invalid
+    fi
+  fi
 }
 
 clear_credentials() {
@@ -143,4 +176,5 @@ clear_credentials() {
   CFG_SS_PASSWORD=""
   CFG_HY2_PASSWORD=""
   CFG_HY2_OBFS_PASSWORD=""
+  CFG_XHTTP_UUID=""
 }

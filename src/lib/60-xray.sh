@@ -207,8 +207,26 @@ xray_render() {
     --arg hy2_obfs "$CFG_HY2_OBFS" \
     --arg hy2_obfs_password "$CFG_HY2_OBFS_PASSWORD" \
     --arg hy2_masquerade "$CFG_HY2_MASQUERADE" \
+    --arg xhttp "$CFG_XHTTP" \
+    --arg xhttp_tls "$CFG_XHTTP_TLS" \
+    --arg xhttp_listen "$CFG_XHTTP_LISTEN" \
+    --arg xhttp_port "$CFG_XHTTP_PORT" \
+    --arg xhttp_uuid "$CFG_XHTTP_UUID" \
+    --arg xhttp_host "$CFG_XHTTP_HOST" \
+    --arg xhttp_path "$CFG_XHTTP_PATH" \
+    --arg xhttp_mode "$CFG_XHTTP_MODE" \
+    --arg xhttp_cert "$CFG_XHTTP_CERT" \
+    --arg xhttp_key "$CFG_XHTTP_KEY" \
+    --arg xhttp_ws "$CFG_XHTTP_WS" \
+    --arg xhttp_ws_port "$CFG_XHTTP_WS_PORT" \
+    --arg xhttp_ws_path "$CFG_XHTTP_WS_PATH" \
+    --arg xhttp_ws_heartbeat "$CFG_XHTTP_WS_HEARTBEAT" \
     --args '
     def with_listen: if $listen == "" then . else {listen: $listen} + . end;
+    def with_xhttp_listen:
+      if $xhttp_listen != "" then {listen: $xhttp_listen} + .
+      elif $listen != "" then {listen: $listen} + .
+      else . end;
     # routeOnly: the sniffed protocol is used for routing only, the
     # destination of the connection is left untouched.
     def with_sniffing:
@@ -298,6 +316,94 @@ xray_render() {
               }
             } else {} end))
           } | with_listen | with_sniffing
+        else empty end),
+        (if $xhttp == "1" then
+          {
+            tag: "vless-xhttp",
+            port: ($xhttp_port | tonumber),
+            protocol: "vless",
+            settings: {
+              users: [{id: $xhttp_uuid}],
+              decryption: "none"
+            },
+            streamSettings: (
+              if $xhttp_tls == "files" then
+                {
+                  method: "xhttp",
+                  security: "tls",
+                  tlsSettings: {
+                    serverName: $xhttp_host,
+                    rejectUnknownSni: true,
+                    alpn: ["h2", "http/1.1"],
+                    certificates: [
+                      {
+                        certificate: ($xhttp_cert | pem_lines),
+                        key: ($xhttp_key | pem_lines)
+                      }
+                    ]
+                  },
+                  xhttpSettings: {
+                    host: $xhttp_host,
+                    path: $xhttp_path,
+                    mode: $xhttp_mode
+                  }
+                } + (if $sockopt == {} then {} else {sockopt: $sockopt} end)
+              else
+                {
+                  method: "xhttp",
+                  security: "none",
+                  xhttpSettings: {
+                    path: $xhttp_path,
+                    mode: $xhttp_mode
+                  }
+                }
+              end
+            )
+          } | with_xhttp_listen | with_sniffing
+        else empty end),
+        (if $xhttp == "1" and $xhttp_ws == "1" then
+          {
+            tag: "vless-ws-keepalive",
+            port: ($xhttp_ws_port | tonumber),
+            protocol: "vless",
+            settings: {
+              users: [{id: $xhttp_uuid}],
+              decryption: "none"
+            },
+            streamSettings: (
+              if $xhttp_tls == "files" then
+                {
+                  method: "websocket",
+                  security: "tls",
+                  tlsSettings: {
+                    serverName: $xhttp_host,
+                    rejectUnknownSni: true,
+                    alpn: ["http/1.1"],
+                    certificates: [
+                      {
+                        certificate: ($xhttp_cert | pem_lines),
+                        key: ($xhttp_key | pem_lines)
+                      }
+                    ]
+                  },
+                  wsSettings: {
+                    host: $xhttp_host,
+                    path: $xhttp_ws_path,
+                    heartbeatPeriod: ($xhttp_ws_heartbeat | tonumber)
+                  }
+                } + (if $sockopt == {} then {} else {sockopt: $sockopt} end)
+              else
+                {
+                  method: "websocket",
+                  security: "none",
+                  wsSettings: {
+                    path: $xhttp_ws_path,
+                    heartbeatPeriod: ($xhttp_ws_heartbeat | tonumber)
+                  }
+                }
+              end
+            )
+          } | with_xhttp_listen | with_sniffing
         else empty end)
       ],
       outbounds: [

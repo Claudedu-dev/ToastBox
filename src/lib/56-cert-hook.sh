@@ -88,18 +88,28 @@ renewed="\${RENEWED_LINEAGE:-}"
 [[ -r "\$state_file" ]] || exit 0
 
 eval "\$(jq -r '
-  if (.hy2.enabled // false) == true and (.hy2.tls // "") == "files" and (.hy2.certbot_hook // false) == true
-  then @sh "cert_file=\(.hy2.cert_file // "")"
-  else "cert_file="
-  end
-' "\$state_file" 2>/dev/null || echo 'cert_file=')"
+  (if (.hy2.enabled // false) == true and (.hy2.tls // "") == "files" and (.hy2.certbot_hook // false) == true
+   then (.hy2.cert_file // "") else "" end) as \$hy2_cert
+  | (if (.xhttp.enabled // false) == true and (.xhttp.tls // "") == "files" and (.xhttp.certbot_hook // false) == true
+     then (.xhttp.cert_file // "") else "" end) as \$xhttp_cert
+  | @sh "hy2_cert_file=\(\$hy2_cert)",
+    @sh "xhttp_cert_file=\(\$xhttp_cert)"
+' "\$state_file" 2>/dev/null || printf 'hy2_cert_file=\nxhttp_cert_file=\n')"
 
-[[ -n "\${cert_file:-}" ]] || exit 0
-expected_lineage="\$(dirname -- "\$cert_file")"
 renewed="\${renewed%/}"
-expected_lineage="\${expected_lineage%/}"
+matched=0
 
-if [[ "\$renewed" != "\$expected_lineage" ]]; then
+for cert_file in "\${hy2_cert_file:-}" "\${xhttp_cert_file:-}"; do
+  [[ -n "\$cert_file" ]] || continue
+  expected_lineage="\$(dirname -- "\$cert_file")"
+  expected_lineage="\${expected_lineage%/}"
+  if [[ "\$renewed" == "\$expected_lineage" ]]; then
+    matched=1
+    break
+  fi
+done
+
+if [[ "\$matched" != "1" ]]; then
   exit 0
 fi
 

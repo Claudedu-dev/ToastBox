@@ -2,7 +2,7 @@
 
 简体中文 | [English](README.en.md)
 
-在 Debian / Ubuntu 上一条命令部署 **VLESS-TCP-REALITY-Vision**、**Shadowsocks 2022** 与 **Hysteria 2** 节点，内核可选 [Xray](https://github.com/XTLS/Xray-core) 或 [sing-box](https://github.com/SagerNet/sing-box)。
+在 Debian / Ubuntu 上一条命令部署 **VLESS-TCP-REALITY-Vision**、**VLESS-XHTTP**（含 Cloudflare CDN 及可选 WebSocket 保活旁路）、**Shadowsocks 2022** 与 **Hysteria 2** 节点，内核可选 [Xray](https://github.com/XTLS/Xray-core) 或 [sing-box](https://github.com/SagerNet/sing-box)（VLESS-XHTTP 为 Xray 专属）。
 
 - 内核通过官方渠道安装：Xray 使用 [XTLS/Xray-install](https://github.com/XTLS/Xray-install)，sing-box 使用官方 APT 源。
 - 只写当前文档里的配置格式，不使用已弃用的字段。
@@ -18,7 +18,8 @@
 | 架构 | amd64、arm64 |
 | 权限 | root |
 | Xray | 26.7.11 或更高（脚本默认安装最新版） |
-| sing-box | 1.12.0 或更高（脚本默认安装最新版） |
+| sing-box | 服务端 1.12.0 或更高（脚本默认安装最新版；不支持 `--protocols xhttp`）；客户端配置（`--format sing-box`）需 1.11.0+ |
+| Mihomo 客户端 | v1.19.34 或更高（仅使用 `--format mihomo` 中的 XHTTP 节点时） |
 
 ## 快速开始
 
@@ -33,7 +34,7 @@ sudo bash toastbox.sh
 sudo toastbox show
 ```
 
-无人值守示例：
+无人值守示例（VLESS-REALITY + SS）：
 
 ```bash
 sudo bash toastbox.sh install -y \
@@ -42,15 +43,27 @@ sudo bash toastbox.sh install -y \
   --ss-port 28443
 ```
 
+无人值守示例（Cloudflare CDN 后 VLESS-XHTTP + WebSocket 长连接保活）：
+
+```bash
+sudo bash toastbox.sh install -y \
+  --core xray --protocols xhttp \
+  --xhttp-tls none \
+  --xhttp-host edge.example.com \
+  --xhttp-ws-keepalive
+sudo toastbox show --format nginx
+sudo toastbox show --format mihomo
+```
+
 ## 命令
 
 | 命令 | 作用 |
 | --- | --- |
 | `install` | 部署节点；节点已存在时用来修改设置 |
-| `show` | 显示连接信息、分享链接或客户端配置 |
+| `show` | 显示连接信息、分享链接、Nginx snippet 或客户端配置 |
 | `update` | 升级内核并重启节点 |
-| `rotate` | 重新生成 UUID、REALITY 密钥对、Short ID、Shadowsocks 密码和 Hysteria 2 认证/混淆密码（保留 TLS 证书） |
-| `refresh-cert` | 从 `--hy2-cert` / `--hy2-key` 重新校验并导入证书材料；证书或私钥有变化时重载当前激活内核 |
+| `rotate` | 重新生成 UUID（含 XHTTP UUID）、REALITY 密钥对、Short ID、Shadowsocks 密码和 Hysteria 2 认证/混淆密码（保留路径与 TLS 证书） |
+| `refresh-cert` | 从 `--hy2-cert` / `--hy2-key` 或 `--xhttp-cert` / `--xhttp-key` 重新校验并导入证书材料；有变化时重载当前激活内核 |
 | `uninstall` | 移除内核和节点；加 `--purge` 同时删除配置、日志和备份 |
 
 ### `install` 的选项
@@ -58,8 +71,8 @@ sudo bash toastbox.sh install -y \
 | 选项 | 默认值 | 说明 |
 | --- | --- | --- |
 | `--core xray\|sing-box` | `xray` | 使用的内核 |
-| `--protocols LIST` | `vless,ss` | `vless`、`ss`、`hy2`、`both`（`vless,ss`）、`all`（三者全部）或逗号组合 |
-| `--server-addr ADDR` | 自动检测 | 客户端连接所用的 IP 或域名 |
+| `--protocols LIST` | `vless,ss` | `vless`、`ss`、`hy2`、`xhttp`、`both`（`vless,ss`）、`all`（`vless,ss,hy2`）或逗号组合 |
+| `--server-addr ADDR` | 自动检测 | 客户端连接所用的 IP 或域名（仅启用 `xhttp` 时未指定则继承 `--xhttp-host`） |
 | `--name NAME` | `ToastBox` | 分享链接里的节点名称 |
 | `--listen ADDR` | 全部地址 | 绑定到指定的本机地址 |
 | `--vless-port PORT` | `443` | VLESS 端口 |
@@ -83,6 +96,24 @@ sudo bash toastbox.sh install -y \
 | `--hy2-obfs none\|salamander` | `none` | 可选 Salamander 混淆；开启时自动生成独立混淆密码 |
 | `--hy2-masquerade none\|URL` | 无 | HTTP/3 反向代理伪装目标 URL，或 `none` 清除 |
 | `--hy2-renew-cert` | | 显式重新签发自签 Hysteria 2 证书 |
+| `--xhttp-tls none\|files` | `none` | `none`：本机回环明文 h2c 后端（供 Nginx/ToastWeb 反代）；`files`：导入证书直接监听公网 TLS |
+| `--xhttp-listen ADDR` | `127.0.0.1` / 全部 | XHTTP 监听地址（`none` 模式仅允许回环地址 `127.0.0.1` / `::1`） |
+| `--xhttp-port PORT` | `10000` / `443` | XHTTP 监听 TCP 端口（`none` 默认 `10000`，`files` 默认 `443`） |
+| `--xhttp-public-port PORT` | `443` | `none` 模式下客户端连接的公网 HTTPS 端口 |
+| `--xhttp-host DOMAIN` | 域名地址 | 公网域名 / SNI（必为域名；未指定时自动取域名形式的 `--server-addr`） |
+| `--xhttp-connect-addr ADDR` | 与 `--xhttp-host` 相同 | 客户端拨号地址 / Cloudflare 优选 IP 或域名；传 `""` 或 `none` 清除回退 |
+| `--xhttp-path PATH` | 随机 `/<hex>` | XHTTP 请求路径 |
+| `--xhttp-mode MODE` | `auto` | 服务端 XHTTP 模式：`auto`、`packet-up`、`stream-up` 或 `stream-one` |
+| `--xhttp-client-mode MODE` | `packet-up` | 导出链接 / 客户端配置使用的 XHTTP 模式：`packet-up`、`auto`、`stream-up` 或 `stream-one` |
+| `--xhttp-alpn MODE` | `h2` | XHTTP 客户端 ALPN：`h2`、`h3` 或 `http/1.1`（`h3` 仅适用于已开启 HTTP/3 的 Cloudflare 等 CDN 代理域名，直连源站不可用） |
+| `--xhttp-cert FILE` | | 导入 XHTTP 证书链 PEM 文件（隐含 `--xhttp-tls files`） |
+| `--xhttp-key FILE` | | 导入 XHTTP 私钥 PEM 文件（需与 `--xhttp-cert` 成对提供） |
+| `--xhttp-cert-hook certbot\|none` | `none` | 为 `--xhttp-tls files` 导入的 Certbot 证书安装/移除续期自动同步钩子 |
+| `--xhttp-ws-keepalive` | 关闭 | 启用辅助 `vless-ws-keepalive` 入站用于长连接保活（`--no-xhttp-ws-keepalive` 关闭） |
+| `--xhttp-ws-port PORT` | `10001` / `8443` | 辅助 WS 端口（`none` 默认 `10001`；`files` 默认 `8443`，未显式指定时若默认 `8443` 冲突或被占用则自动回退 `2053`；显式指定或已保存的自定义端口不自动搬迁） |
+| `--xhttp-ws-public-port PORT` | `443` | `none` 模式下客户端连接 WS 的公网 HTTPS 端口 |
+| `--xhttp-ws-path PATH` | 随机 `/<hex>` | 辅助 WS 请求路径（需与 `--xhttp-path` 互斥且非路径前缀） |
+| `--xhttp-ws-heartbeat SEC` | `30` | 服务端 Xray WebSocket `heartbeatPeriod` 秒数（`1–3600`；大于 `60` 会提示 Cloudflare 125s 读取超时风险） |
 | `--tcp-keepalive-idle SEC` | 不覆盖 | Xray TCP 保活空闲时间，1–32767 秒；`0` 清除该项 |
 | `--tcp-keepalive-interval SEC` | 不覆盖 | Xray TCP 保活探测间隔，1–32767 秒；`0` 清除该项 |
 | `--tcp-user-timeout MS` | 不覆盖 | Xray TCP 用户超时，1–2147483647 毫秒；`0` 清除该项 |
@@ -102,8 +133,10 @@ sudo toastbox show                          # 参数一览和分享链接
 sudo toastbox show --qr                     # 同时显示二维码
 sudo toastbox show --format links           # 只输出分享链接
 sudo toastbox show --format xray            # 完整的 Xray 客户端配置
-sudo toastbox show --format sing-box        # 完整的 sing-box 客户端配置
+sudo toastbox show --format sing-box        # 完整的 sing-box 客户端配置（不含 XHTTP）
 sudo toastbox show --format hysteria2       # 官方 Hysteria 2 客户端配置
+sudo toastbox show --format mihomo          # 完整的 Clash / Mihomo YAML 配置（支持 XHTTP）
+sudo toastbox show --format nginx           # Nginx 反向代理 location 片段（仅 XHTTP none 模式）
 sudo toastbox show --format json            # 机器可读（不含私钥）
 sudo toastbox show --format xray --protocols hy2   # 只输出某个协议
 ```
@@ -111,6 +144,64 @@ sudo toastbox show --format xray --protocols hy2   # 只输出某个协议
 客户端配置在本机 `127.0.0.1:1080` 开一个代理入口，可以直接保存后运行。
 
 ## 需要了解的几件事
+
+### VLESS + XHTTP（Cloudflare CDN 与长连接保活旁路）
+
+ToastBox 支持两种 `--protocols xhttp` TLS 工作方式（仅支持 **Xray** 内核，独立于 `vless` REALITY 端口与 UUID）：
+
+- **本机反代后端（`--xhttp-tls none`，默认）**：Xray 仅监听回环地址 `127.0.0.1:10000`（明文 h2c），不触碰宿主机 Nginx / ToastWeb 配置，也不会在 ufw 上开放回环后端端口。执行 `toastbox show --format nginx` 可打印出需嵌进现有 Nginx `server { listen 443 ssl; http2 on; ... }` 块中的 `location` 片段：
+  - 注意：`--xhttp-path` 必须使用 `location ^~ <path>`（不能改为 `=`），因为 `packet-up` 会在路径后拼接 `/<session>/<seq>`；
+  - 若同机尚未配置 Nginx 网站，下面给出了可直接参考的完整独立 HTTPS `server` 块示例（含 SNI 防漏与 Cloudflare Origin CA / 公共证书占位）。
+- **源站证书直连（`--xhttp-tls files`）**：若机上未安装 Nginx，可先在 Cloudflare Dashboard 生成 **Origin CA** 证书/私钥 PEM（或复用已有公共 CA / Certbot 证书），通过 `--xhttp-cert` 与 `--xhttp-key` 导入。Xray 直接监听 `443/tcp`（如同时开启辅助 WS，则 WS 默认监听受 Cloudflare 代理支持的 `8443/tcp`，未自定义端口且默认 `8443` 与同节点端口冲突或被其他进程占用时自动回退到 `2053/tcp`；若用户显式指定或已保存自定义 WS 端口则不会自动搬迁，冲突时由端口预检报错退出），自动启用 `tlsSettings.serverName` 与 `rejectUnknownSni: true` 拒绝未知 SNI 扫描以防止暴露源站域名，并纳入 ufw 管理；证书续期或更换后可执行 `sudo toastbox refresh-cert` 重载（若使用 Certbot 证书，可加 `--xhttp-cert-hook certbot` 自动续期同步，且与 Hysteria 2 证书刷新互相故障隔离）。
+
+Cloudflare 面板建议检查项：
+1. DNS 解析记录开启 **Proxy status: Proxied**（橙色云朵）。
+2. **SSL/TLS** 模式设为 **Full (strict)（完全（严格））**。
+3. **Network** 中确认启用 **gRPC** 与 **WebSockets**（以及按需启用 **HTTP/2 to Origin**；如关闭 HTTP/2 回源，`show --format nginx` 内附有 HTTP/1.1 回退注解片段）。
+
+可选 **WebSocket 保活旁路（`--xhttp-ws-keepalive`）**：
+- Cloudflare 对代理连接设有 **125 秒**的读取空闲超时（Proxy Read Timeout），空闲时可能会导致 ChatGPT 桌面端流式响应或空闲 SSH 会话断连。启用 `--xhttp-ws-keepalive` 后，ToastBox 会同启一个共享 UUID 的 `vless-ws-keepalive` 辅助入站并设置服务端 `heartbeatPeriod`（默认 `30` 秒，定期向客户端发送 WebSocket Ping 控制帧以维持链路活跃）。
+- `toastbox show --format mihomo` 会在启用该功能时生成可运行的完整 YAML：若指定了 `--xhttp-connect-addr`（优选 IP/域名），会自动附加连接原域名的回退节点（`-fallback`）并放入选择器；且明确将 RFC1918 / 回环 / IPv6 ULA/LLA 的 `DIRECT,no-resolve` 规则置于 `DST-PORT,22` 与 OpenAI 域名规则之前，防止局域网 SSH 被误劫持。`show --format xray` 也会自动生成将 OpenAI/ChatGPT 域名及 `22/tcp` 路由至 `vless-ws-keepalive` 的分流规则；`show --format sing-box` 则会导出兼容的 `vless-ws-keepalive` 节点。
+- **使用提醒**：
+  - XHTTP 客户端配置依赖 **Mihomo >= v1.19.34** 或最新版 Xray；
+  - `--xhttp-alpn h3` 要求域名必须开启 Cloudflare 代理（橙色云朵）并在 Cloudflare 开启 HTTP/3（QUIC）：因为源站 Xray 与 Nginx 片段仅监听 TCP（`h2` / `http/1.1`），直连源站 IP 或灰云域名时选 `h3` 会无法连接；
+  - Cloudflare 仅开放固定 HTTPS 代理端口集（`443`、`2053`、`2083`、`2087`、`2096`、`8443`）；且 Cloudflare 边缘节点在发布新版本或例行重启时仍会断开现有 WebSocket 连接，Ping/Pong 保活仅能防止 125 秒空闲超时，不能保证绝对不断线；
+  - Xray 启动时会在日志中对 WebSocket 传输层本身打印“已弃用但保留不移除”的提示，`heartbeatPeriod` 在当前 Xray 主线中正常生效；
+  - ToastBox 继续使用自身按需开关服务监听端口的 ufw 模型，不会接管或修改 Cloudflare 回源 IP 白名单规则。
+
+<details>
+<summary>独立 Nginx 完整 HTTPS server 模板（仅用于无现成站点时，按需替换域名与证书路径）</summary>
+
+```nginx
+# 未知 SNI 默认断开（防止扫描通过 IP 或其他域名撞库）
+server {
+    listen 443 ssl default_server;
+    listen [::]:443 ssl default_server;
+    ssl_reject_handshake on;
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on; # 若 Nginx < 1.25.1，改为: listen 443 ssl http2; 并删除本行
+    server_name edge.example.com;
+
+    ssl_certificate     /etc/ssl/origin.pem;
+    ssl_certificate_key /etc/ssl/origin.key;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+
+    # 将下方粘贴为 `sudo toastbox show --format nginx` 的输出：
+    # location ^~ /your-xhttp-path { ... }
+    # location = /your-ws-path { ... }
+
+    location / {
+        return 404;
+    }
+}
+```
+
+</details>
 
 ### REALITY 目标站怎么选
 
@@ -186,7 +277,7 @@ sudo toastbox install -y --no-firewall \
 参数保存到 `state.json` 的 `sockopt` 对象，之后 `install`（不再指定这些参数）、`update`、`rotate` 都会重放。修改设置本身不会更换凭据；`rotate` 仍会按原设计轮换凭据。
 
 - 新节点及不含 `sockopt` 的旧状态均不添加覆盖，沿用内核 / 系统默认值；不会自动导入手改服务端 JSON 中的值，需用上述选项录入一次。
-- 仅作用于 Xray 的 TCP 入站：VLESS-REALITY、SS TCP 或 TCP+UDP 中的 TCP 部分；SS 仅 UDP 时不生成该配置。不会修改出站、客户端配置或宿主机 `sysctl`。
+- 仅作用于 Xray 的公网 TCP 入站：VLESS-REALITY、XHTTP 的 `files` 模式（及辅助 WS）、SS TCP 或 TCP+UDP 中的 TCP 部分；XHTTP `none` 回环后端与 SS 仅 UDP 时不生成该配置。不会修改出站、客户端配置或宿主机 `sysctl`。
 - KeepAlive 的单位为秒，UserTimeout 为毫秒；`tcpUserTimeout` 仅 Linux 生效。脚本会拒绝负数、小数、非数字及超出范围的值。
 - 只修改单项时，其他已保存项保持不变；将单项设为 `0` 可清除该覆盖。`--reset-sockopt` 清除全部，再应用同一命令中的显式参数，与参数顺序无关。
 - sing-box 不接受这组 Xray 专用设置。已有自定义项时切换内核会被拒绝；确认不再需要后，可使用 `install --core sing-box --reset-sockopt` 显式清除并切换。
@@ -213,7 +304,7 @@ sudo toastbox install -y --no-firewall \
 | `/usr/local/libexec/toastbox-hy2-hop` | 独立 UDP 端口跳跃 NAT helper 脚本 |
 | `/etc/systemd/system/toastbox-hy2-hop.service` | 开机与随内核恢复端口跳跃 NAT 的 systemd 服务（及内核 service drop-in） |
 | `/etc/systemd/system/toastbox-hy2-certbot.timer` | 无系统共享 Certbot 定时器时为独立 ACME 谱系创建的定时续期任务（含对应 `.service`） |
-| `/etc/letsencrypt/renewal-hooks/deploy/toastbox-hy2.sh` | Certbot 证书续期后自动调用 `refresh-cert` 的部署钩子（需 `--hy2-cert-hook certbot` 或 `acme`） |
+| `/etc/letsencrypt/renewal-hooks/deploy/toastbox-hy2.sh` | Certbot 证书续期后自动调用 `refresh-cert` 的部署钩子（需 `--hy2-cert-hook certbot`、`--xhttp-cert-hook certbot` 或 `acme`） |
 
 sing-box 的服务会合并 `/etc/sing-box/` 下的所有 JSON 文件。该目录里若有其他配置文件，脚本会提示。
 

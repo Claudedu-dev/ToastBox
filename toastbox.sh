@@ -63,6 +63,25 @@ TB_SS_METHODS=(
   "2022-blake3-chacha20-poly1305"
 )
 
+TB_XHTTP_DEFAULT_PORT=10000
+TB_XHTTP_DEFAULT_PUBLIC_PORT=443
+TB_XHTTP_DEFAULT_WS_PORT=10001
+TB_XHTTP_DEFAULT_WS_FILES_PORT=8443
+TB_XHTTP_DEFAULT_WS_HEARTBEAT=30
+
+TB_XHTTP_MODES=(
+  "auto"
+  "packet-up"
+  "stream-up"
+  "stream-one"
+)
+
+TB_XHTTP_ALPNS=(
+  "h2"
+  "h3"
+  "http/1.1"
+)
+
 # Destinations that a public node should not relay to: loopback, RFC 1918,
 # CGNAT, link-local (cloud metadata lives there), benchmarking, multicast,
 # reserved, and the IPv6 equivalents.
@@ -266,13 +285,37 @@ TB_MSG_EN[err_unknown_arg]='Unknown argument: %s (see --help).'
 TB_MSG_EN[err_invalid_option]='Invalid value for %s: "%s"'
 TB_MSG_EN[err_invalid_value]='Invalid value: "%s"'
 TB_MSG_EN[warn_invalid_input]='"%s" is not valid, please try again.'
-TB_MSG_EN[err_protocols]='Invalid protocol list "%s". Use vless, ss, hy2, both, all or comma-separated combinations.'
+TB_MSG_EN[err_protocols]='Invalid protocol list "%s". Use vless, ss, hy2, xhttp, both, all or comma-separated combinations.'
 TB_MSG_EN[err_protocol_disabled]='Protocol "%s" is not enabled on this node.'
-TB_MSG_EN[err_format]='Unknown format "%s". Use text, links, json, xray, sing-box or hysteria2.'
+TB_MSG_EN[err_format]='Unknown format "%s". Use text, links, json, xray, sing-box, hysteria2, mihomo or nginx.'
 TB_MSG_EN[err_format_requires_hy2]='Format "hysteria2" requires Hysteria 2 to be enabled and selected.'
+TB_MSG_EN[err_format_singbox_no_xhttp]='Format "sing-box" does not support VLESS + XHTTP because ToastBox configures XHTTP on Xray; use "xray" or "mihomo" instead.'
+TB_MSG_EN[warn_singbox_skip_xhttp]='sing-box outbound rendering skipped VLESS + XHTTP; use "show --format xray" or "show --format mihomo" for XHTTP.'
+TB_MSG_EN[warn_singbox_xhttp_ws_only]='sing-box does not support VLESS + XHTTP; emitted companion VLESS + WS outbound only (use "show --format xray" or "show --format mihomo" for XHTTP).'
+TB_MSG_EN[err_format_requires_xhttp]='Format "nginx" requires VLESS + XHTTP to be enabled and selected.'
+TB_MSG_EN[err_format_nginx_requires_none]='Nginx location snippets are only generated when XHTTP runs behind a reverse proxy (--xhttp-tls none).'
 TB_MSG_EN[err_aborted]='Aborted. Nothing was changed. (Use --yes to confirm without a prompt.)'
 TB_MSG_EN[err_sockopt_core]='Custom TCP sockopt is supported only by Xray, not %s. Use install --reset-sockopt to clear it before switching cores.'
 TB_MSG_EN[err_sockopt_command]='TCP sockopt options are only accepted with install; update and rotate reuse the saved settings.'
+TB_MSG_EN[err_xhttp_core]='VLESS + XHTTP requires the Xray core, not %s.'
+TB_MSG_EN[err_xhttp_command]='XHTTP options are only accepted with install; update and rotate reuse the saved settings.'
+TB_MSG_EN[err_xhttp_not_enabled]='XHTTP options require xhttp to be included in --protocols.'
+TB_MSG_EN[err_xhttp_cert_with_none]='--xhttp-cert and --xhttp-key cannot be combined with --xhttp-tls none.'
+TB_MSG_EN[err_xhttp_cert_pair_required]='--xhttp-cert and --xhttp-key must be passed together.'
+TB_MSG_EN[err_xhttp_none_loopback]='XHTTP TLS mode "none" is a plaintext h2c backend for a local reverse proxy and must listen on a loopback address (got "%s"); use 127.0.0.1 / ::1 or pass --xhttp-tls files.'
+TB_MSG_EN[err_xhttp_host_required]='XHTTP requires your public hostname (for example cdn.example.com). Pass it with --xhttp-host (or --server-addr when using a domain).'
+TB_MSG_EN[err_xhttp_files_required]='XHTTP TLS mode "files" requires --xhttp-cert and --xhttp-key.'
+TB_MSG_EN[err_xhttp_cert_pair]='XHTTP certificate %s and private key %s are unreadable, expired or do not match.'
+TB_MSG_EN[err_xhttp_cert_host_mismatch]='The XHTTP certificate is not valid for "%s".'
+TB_MSG_EN[err_xhttp_tls_invalid]='The saved XHTTP certificate or key is invalid or expired; re-import with --xhttp-cert and --xhttp-key.'
+TB_MSG_EN[err_xhttp_cert_sources_missing]='No external certificate source paths are recorded for XHTTP; import with --xhttp-cert and --xhttp-key first.'
+TB_MSG_EN[err_xhttp_hook_not_none]='--xhttp-cert-hook certbot cannot be used with --xhttp-tls none.'
+TB_MSG_EN[err_xhttp_ws_not_enabled]='XHTTP WebSocket keep-alive options (--xhttp-ws-*) require --xhttp-ws-keepalive to be enabled.'
+TB_MSG_EN[err_xhttp_path_conflict]='XHTTP path "%s" conflicts with WebSocket keep-alive path "%s" (paths must differ and not be a path-segment prefix of each other).'
+TB_MSG_EN[warn_xhttp_ws_heartbeat_cf]='XHTTP WS heartbeatPeriod is %ss; Cloudflare enforces a 125s proxy read timeout, so values above 60s may disconnect idle clients.'
+TB_MSG_EN[warn_xhttp_alpn_h3]='XHTTP ALPN is "h3": origin listens on TCP only, so clients must connect through a CDN edge (e.g. Cloudflare) with HTTP/3 (QUIC) enabled, not directly to origin.'
+TB_MSG_EN[warn_xhttp_ws_port_conflict]='XHTTP WS default port %s/tcp conflicts with another configured TCP port on this node; using fallback port %s/tcp.'
+TB_MSG_EN[warn_xhttp_ws_port_busy]='XHTTP WS default port %s/tcp is already in use; using fallback port %s/tcp.'
 TB_MSG_EN[err_hy2_command]='Hysteria 2 options are only accepted with install; update and rotate reuse the saved settings.'
 TB_MSG_EN[err_hy2_cert_with_self_signed]='--hy2-cert and --hy2-key cannot be combined with --hy2-tls self-signed.'
 TB_MSG_EN[err_hy2_cert_pair_required]='--hy2-cert and --hy2-key must be passed together.'
@@ -296,7 +339,7 @@ TB_MSG_EN[err_hy2_acme_requires_hook]='ACME automatic issuance requires automati
 TB_MSG_EN[err_hy2_acme_domain_required]='ACME certificate issuance requires a domain name (--hy2-acme-domain or a domain --server-addr).'
 TB_MSG_EN[err_hy2_acme_email_required]='ACME certificate issuance requires an account email address (--hy2-acme-email).'
 TB_MSG_EN[err_hy2_acme_tos_required]='ACME certificate issuance requires accepting the CA Subscriber Agreement (--hy2-acme-agree-tos).'
-TB_MSG_EN[err_hy2_acme_port80_conflict]='Certbot standalone HTTP-01 requires TCP port 80, which conflicts with the configured VLESS or Shadowsocks TCP port 80.'
+TB_MSG_EN[err_hy2_acme_port80_conflict]='Certbot standalone HTTP-01 requires TCP port 80, which conflicts with the configured TCP port 80 listener.'
 TB_MSG_EN[err_hy2_acme_port80_busy]='TCP port 80 is already in use by: %s. Certbot standalone requires port 80 and ToastBox will not stop existing services; use --hy2-cert and --hy2-key to reuse an existing certificate instead.'
 TB_MSG_EN[err_hy2_acme_dns_unresolvable]='Domain %s did not resolve to any IP address in DNS. Point an A/AAAA record to this server before running ACME.'
 TB_MSG_EN[err_hy2_acme_dns_private]='Domain %s resolved only to non-public IP address(es) (%s); public Let'\''s Encrypt HTTP-01 validation requires a public IP.'
@@ -318,15 +361,15 @@ TB_MSG_EN[err_hy2_hop_no_backend]='Hysteria 2 UDP port hopping requires nftables
 TB_MSG_EN[err_hy2_hop_no_cmd]='Hysteria 2 UDP port hopping requires the "%s" command.'
 TB_MSG_EN[err_hy2_hop_apply]='Could not configure Hysteria 2 UDP port-hopping NAT rules.'
 TB_MSG_EN[err_refresh_options]='refresh-cert accepts no installation or show options (only --yes / --lang).'
-TB_MSG_EN[err_refresh_requires_hy2]='Hysteria 2 is not enabled on this node.'
-TB_MSG_EN[err_refresh_requires_files]='refresh-cert requires Hysteria 2 TLS mode "files".'
-TB_MSG_EN[info_hy2_cert_unchanged]='Hysteria 2 certificate chain and key are unchanged; no restart needed.'
-TB_MSG_EN[ok_hy2_cert_refreshed]='Hysteria 2 certificate was refreshed.'
+TB_MSG_EN[err_refresh_requires_protocol]='Neither Hysteria 2 nor XHTTP TLS certificate import is enabled on this node.'
+TB_MSG_EN[err_refresh_requires_files]='refresh-cert requires Hysteria 2 or XHTTP TLS mode "files".'
+TB_MSG_EN[info_cert_unchanged]='Certificate chain and key are unchanged; no restart needed.'
+TB_MSG_EN[ok_cert_refreshed]='TLS certificate was refreshed.'
 TB_MSG_EN[err_lock_open]='Could not open operation lock %s.'
 TB_MSG_EN[err_lock_busy]='Another ToastBox operation holds the lock %s.'
 
 TB_MSG_EN[prompt_core]='Core: 1) xray  2) sing-box'
-TB_MSG_EN[prompt_protocols]='Protocols: 1) VLESS+SS  2) VLESS only  3) SS only  4) Hysteria 2 only  5) all three (or comma list)'
+TB_MSG_EN[prompt_protocols]='Protocols: 1) VLESS+SS  2) VLESS only  3) SS only  4) Hysteria 2 only  5) VLESS+SS+Hy2 (all)  6) XHTTP only (or comma list)'
 TB_MSG_EN[info_detect_addr]='Detecting the public address of this server...'
 TB_MSG_EN[err_server_addr_required]='Could not detect the public address. Pass it with --server-addr.'
 TB_MSG_EN[prompt_server_addr]='Address clients connect to (IP or domain)'
@@ -361,8 +404,15 @@ TB_MSG_EN[prompt_hy2_cert]='Path to TLS certificate chain PEM'
 TB_MSG_EN[prompt_hy2_key]='Path to TLS private key PEM'
 TB_MSG_EN[prompt_hy2_sni]='Hysteria 2 TLS verification name (SNI)'
 TB_MSG_EN[prompt_hy2_obfs]='Hysteria 2 obfuscation: 1) none  2) salamander'
+TB_MSG_EN[prompt_xhttp_tls]='XHTTP TLS: 1) none (plaintext loopback backend behind reverse proxy, default)  2) files (direct TLS on 443/8443 using Origin CA or public PEM)'
+TB_MSG_EN[prompt_xhttp_host]='Public XHTTP hostname (Host / SNI), e.g. edge.example.com'
+TB_MSG_EN[prompt_xhttp_port]='XHTTP backend TCP port'
+TB_MSG_EN[prompt_xhttp_connect_addr]='Client dial address / CDN preferred domain or IP (leave empty to match Host)'
+TB_MSG_EN[prompt_xhttp_cert]='Path to XHTTP TLS certificate chain PEM (e.g. Cloudflare Origin CA)'
+TB_MSG_EN[prompt_xhttp_key]='Path to XHTTP TLS private key PEM'
+TB_MSG_EN[prompt_xhttp_ws_keepalive]='Also enable companion VLESS-WS keep-alive inbound for long idle connections (e.g. ChatGPT Desktop / idle SSH)?'
 TB_MSG_EN[err_no_free_port]='Could not find a free port. Pass one with --ss-port.'
-TB_MSG_EN[err_port_same]='VLESS and Shadowsocks cannot both listen on TCP port %s.'
+TB_MSG_EN[err_port_same]='Two TCP listeners cannot both bind to port %s.'
 TB_MSG_EN[err_port_same_udp]='Hysteria 2 and Shadowsocks cannot both listen on UDP port %s.'
 TB_MSG_EN[err_port_in_use]='Port %s is already in use by: %s'
 TB_MSG_EN[plan_title]='About to deploy:'
@@ -436,13 +486,23 @@ TB_MSG_EN[label_hop_ports]='Hop ports'
 TB_MSG_EN[label_hop_interval]='Hop interval'
 TB_MSG_EN[label_acme_domain]='ACME domain'
 TB_MSG_EN[label_acme_lineage]='ACME lineage'
+TB_MSG_EN[label_backend]='Backend'
+TB_MSG_EN[label_connect_addr]='Connect addr'
+TB_MSG_EN[label_host]='Host'
+TB_MSG_EN[label_path]='Path'
+TB_MSG_EN[label_xhttp_mode]='XHTTP mode'
+TB_MSG_EN[label_alpn]='ALPN'
+TB_MSG_EN[label_ws_heartbeat]='WS heartbeat'
 TB_MSG_EN[label_link]='Share link:'
 TB_MSG_EN[note_ss_landing]='Note: Shadowsocks has no TLS camouflage. Use it as a landing node behind a relay, not for connections that cross a censoring firewall directly.'
-TB_MSG_EN[note_client_configs]='Client configurations: "show --format xray", "show --format sing-box" or "show --format hysteria2". Links only: "show --format links". QR codes: "show --qr".'
+TB_MSG_EN[note_client_configs]='Client configurations: "show --format xray", "show --format sing-box", "show --format hysteria2" or "show --format mihomo". Links only: "show --format links". QR codes: "show --qr".'
 TB_MSG_EN[note_hy2_hop_clients]='Port-hopping clients: Hysteria app/v2.14.0+, Xray 26.11.9+ (udphop), or sing-box 1.11.0+.'
 TB_MSG_EN[note_hy2_hop_random_clients]='Random port-hopping clients: Hysteria app/v2.14.0+, Xray 26.11.9+ (udphop), or sing-box 1.14.0+ (hop_interval_max).'
 TB_MSG_EN[note_hop_no_firewall]='Note: --no-firewall skips ufw only; UDP port-hopping PREROUTING NAT will still be configured.'
 TB_MSG_EN[note_hy2_acme_firewall]='ACME HTTP-01 requires TCP 80 open in both firewall and cloud security group for renewals; certificate refreshes briefly restart %s.'
+TB_MSG_EN[note_xhttp_ws_keepalive]='Note: Xray logs a deprecation notice for WebSocket (retained upstream); heartbeatPeriod is active in current Xray.'
+TB_MSG_EN[note_xhttp_nginx]='Print Nginx reverse-proxy location snippets with "show --format nginx". Ensure Cloudflare SSL/TLS is "Full (strict)" with gRPC & WebSockets enabled.'
+TB_MSG_EN[note_xhttp_mihomo_ver]='Full Clash / Mihomo config: "show --format mihomo" (requires Mihomo >= v1.19.34).'
 TB_MSG_EN[note_firewall]='If the provider has its own firewall / security group, open the ports above there as well.'
 TB_MSG_EN[note_security_group_udp]='Cloud security group UDP ports required: %s'
 
@@ -454,7 +514,7 @@ TB_MSG_EN[menu_items]='  1) Install or reconfigure a node
   0) Exit'
 TB_MSG_EN[prompt_menu]='Choose'
 
-TB_MSG_EN[usage]='ToastBox %s - VLESS-TCP-REALITY-Vision, Shadowsocks 2022 and Hysteria 2 nodes on Xray or sing-box
+TB_MSG_EN[usage]='ToastBox %s - VLESS-TCP-REALITY-Vision, VLESS-XHTTP, Shadowsocks 2022 and Hysteria 2 nodes on Xray or sing-box
 
 Usage: toastbox.sh [command] [options]
 
@@ -465,15 +525,15 @@ Commands:
   show         Print connection details, share links or client configs
   update       Upgrade the core and restart the node
   rotate       Generate new UUID / keys / passwords
-  refresh-cert Refresh imported Hysteria 2 certificate & key from saved paths
+  refresh-cert Refresh imported Hysteria 2 or XHTTP certificates from saved paths
   uninstall    Remove the core and the node
   help, version
 
 Options for install:
   --core xray|sing-box        Core to use (default: xray)
-  --protocols LIST            vless, ss, hy2, both (vless,ss), all (all three),
+  --protocols LIST            vless, ss, hy2, xhttp, both (vless,ss), all (vless,ss,hy2),
                               or comma-separated combination (default: vless,ss)
-  --server-addr ADDR          Address clients connect to (default: detected)
+  --server-addr ADDR          Address clients connect to (default: detected; optional host fallback for xhttp)
   --name NAME                 Node name used in share links (default: ToastBox)
   --listen ADDR               Bind to this local address (default: all)
   --vless-port PORT           VLESS port (default: 443)
@@ -499,6 +559,24 @@ Options for install:
   --hy2-hop-ports LIST|none   UDP port hopping ranges (e.g. 20000-20100,30000)
   --hy2-hop-interval SEC|MIN-MAX  Port-hop interval in seconds >=5 (default: 30)
   --hy2-renew-cert            Regenerate the self-signed Hysteria 2 certificate
+  --xhttp-tls none|files      XHTTP TLS: none (loopback reverse-proxy backend, default) or files
+  --xhttp-listen ADDR         XHTTP bind address (loopback for none; default: 127.0.0.1 / ::)
+  --xhttp-port PORT           XHTTP listen TCP port (default: 10000 for none, 443 for files)
+  --xhttp-public-port PORT    Client-facing HTTPS port when --xhttp-tls none (default: 443)
+  --xhttp-host DOMAIN         Public hostname / SNI for XHTTP (or domain --server-addr)
+  --xhttp-connect-addr ADDR   Client dial address / CDN preferred IP or domain (empty resets to host)
+  --xhttp-path PATH           XHTTP request path (default: random /<slug>)
+  --xhttp-mode MODE           Server XHTTP mode: auto (default), packet-up, stream-up or stream-one
+  --xhttp-client-mode MODE    Client XHTTP mode: packet-up (default), auto, stream-up or stream-one
+  --xhttp-alpn MODE           h2 (default), h3 or http/1.1
+  --xhttp-cert FILE           Certificate chain PEM to import (--xhttp-tls files)
+  --xhttp-key FILE            Private key PEM to import (--xhttp-tls files)
+  --xhttp-cert-hook MODE      certbot (install deploy hook) or none
+  --xhttp-ws-keepalive        Enable companion VLESS-WS keep-alive inbound (--no-xhttp-ws-keepalive to disable)
+  --xhttp-ws-port PORT        WS listen port (default: 10001 for none, 8443/2053 for files)
+  --xhttp-ws-public-port PORT Client-facing HTTPS port for WS when --xhttp-tls none (default: 443)
+  --xhttp-ws-path PATH        WS request path (default: random /<slug>)
+  --xhttp-ws-heartbeat SEC    Xray WebSocket heartbeatPeriod in seconds (default: 30)
   --tcp-keepalive-idle SEC    Xray TCP keepalive idle (1..32767 seconds)
   --tcp-keepalive-interval SEC  Xray TCP keepalive interval (1..32767 seconds)
   --tcp-user-timeout MS       Xray TCP user timeout (1..2147483647 milliseconds)
@@ -513,7 +591,7 @@ Options for install:
                               (--yes alone never does)
 
 Options for show:
-  --format FORMAT             text (default), links, json, xray, sing-box, hysteria2
+  --format FORMAT             text (default), links, json, xray, sing-box, hysteria2, mihomo, nginx
   --protocols LIST            Limit the output to these protocols
   --qr                        Also print QR codes (text format)
 
@@ -554,13 +632,37 @@ TB_MSG_ZH[err_unknown_arg]='未知参数：%s（参见 --help）。'
 TB_MSG_ZH[err_invalid_option]='%s 的值无效：“%s”'
 TB_MSG_ZH[err_invalid_value]='无效的值：“%s”'
 TB_MSG_ZH[warn_invalid_input]='“%s”无效，请重新输入。'
-TB_MSG_ZH[err_protocols]='协议列表“%s”无效，可选 vless、ss、hy2、both、all 或逗号分隔组合。'
+TB_MSG_ZH[err_protocols]='协议列表“%s”无效，可选 vless、ss、hy2、xhttp、both、all 或逗号分隔组合。'
 TB_MSG_ZH[err_protocol_disabled]='此节点未启用协议“%s”。'
-TB_MSG_ZH[err_format]='未知格式“%s”，可选 text、links、json、xray、sing-box 或 hysteria2。'
+TB_MSG_ZH[err_format]='未知格式“%s”，可选 text、links、json、xray、sing-box、hysteria2、mihomo 或 nginx。'
 TB_MSG_ZH[err_format_requires_hy2]='格式“hysteria2”要求节点启用并选择了 Hysteria 2 协议。'
+TB_MSG_ZH[err_format_singbox_no_xhttp]='格式“sing-box”不支持 VLESS + XHTTP，请改用“xray”或“mihomo”。'
+TB_MSG_ZH[warn_singbox_skip_xhttp]='已跳过 sing-box 输出中的 VLESS + XHTTP；请使用“show --format xray”或“show --format mihomo”获取 XHTTP 客户端配置。'
+TB_MSG_ZH[warn_singbox_xhttp_ws_only]='sing-box 不支持 VLESS + XHTTP，已仅导出配套的 VLESS + WS 保活节点（完整 XHTTP 请使用“show --format xray”或“show --format mihomo”）。'
+TB_MSG_ZH[err_format_requires_xhttp]='格式“nginx”要求节点启用并选择了 VLESS + XHTTP 协议。'
+TB_MSG_ZH[err_format_nginx_requires_none]='Nginx location 片段仅在 XHTTP 处于反向代理模式（--xhttp-tls none）时生成。'
 TB_MSG_ZH[err_aborted]='已取消，未做任何更改。（使用 --yes 可跳过确认。）'
 TB_MSG_ZH[err_sockopt_core]='自定义 TCP sockopt 仅支持 Xray，不支持 %s。切换内核前请用 install --reset-sockopt 清除。'
 TB_MSG_ZH[err_sockopt_command]='TCP sockopt 选项仅可用于 install；update 和 rotate 会复用已保存的设置。'
+TB_MSG_ZH[err_xhttp_core]='VLESS + XHTTP 仅支持 Xray 内核，不支持 %s。'
+TB_MSG_ZH[err_xhttp_command]='XHTTP 选项仅可用于 install；update 和 rotate 会复用已保存的设置。'
+TB_MSG_ZH[err_xhttp_not_enabled]='只有在 --protocols 中启用了 XHTTP（xhttp）时才能使用 XHTTP 选项。'
+TB_MSG_ZH[err_xhttp_cert_with_none]='--xhttp-cert 与 --xhttp-key 不能与 --xhttp-tls none 同时使用。'
+TB_MSG_ZH[err_xhttp_cert_pair_required]='--xhttp-cert 与 --xhttp-key 必须成对提供。'
+TB_MSG_ZH[err_xhttp_none_loopback]='XHTTP TLS 模式“none”是供本机反向代理使用的明文 h2c 后端，必须监听回环地址（当前为“%s”）；请使用 127.0.0.1 / ::1，或改用 --xhttp-tls files。'
+TB_MSG_ZH[err_xhttp_host_required]='XHTTP 需要提供公网域名（例如 cdn.example.com），请使用 --xhttp-host 指定（或在非纯 IP 时使用域名形式的 --server-addr）。'
+TB_MSG_ZH[err_xhttp_files_required]='XHTTP 的 TLS 模式“files”需要提供 --xhttp-cert 和 --xhttp-key。'
+TB_MSG_ZH[err_xhttp_cert_pair]='XHTTP 证书 %s 与私钥 %s 无法读取、已过期或不匹配。'
+TB_MSG_ZH[err_xhttp_cert_host_mismatch]='XHTTP 证书对“%s”无效。'
+TB_MSG_ZH[err_xhttp_tls_invalid]='已保存的 XHTTP 证书或私钥无效或已过期，请用 --xhttp-cert 与 --xhttp-key 重新导入。'
+TB_MSG_ZH[err_xhttp_cert_sources_missing]='未记录 XHTTP 外部证书来源路径，请先使用 --xhttp-cert 与 --xhttp-key 重新导入。'
+TB_MSG_ZH[err_xhttp_hook_not_none]='--xhttp-cert-hook certbot 不能与 --xhttp-tls none 模式同时使用。'
+TB_MSG_ZH[err_xhttp_ws_not_enabled]='使用 XHTTP WebSocket 保活参数（--xhttp-ws-*）需要同时启用 --xhttp-ws-keepalive。'
+TB_MSG_ZH[err_xhttp_path_conflict]='XHTTP 路径“%s”与 WebSocket 保活路径“%s”冲突（两者必须不同且不能互为路径前缀）。'
+TB_MSG_ZH[warn_xhttp_ws_heartbeat_cf]='XHTTP WS 心跳间隔设为 %s 秒；Cloudflare 代理读取超时为 125 秒，大于 60 秒可能导致空闲长连接断开。'
+TB_MSG_ZH[warn_xhttp_alpn_h3]='XHTTP ALPN 设为“h3”：源站仅监听 TCP，客户端必须经由已开启 HTTP/3（QUIC）的 CDN 边缘节点（如 Cloudflare）连接，不能直连源站。'
+TB_MSG_ZH[warn_xhttp_ws_port_conflict]='XHTTP WS 默认端口 %s/tcp 与本节点其他 TCP 端口冲突，已自动改用备用端口 %s/tcp。'
+TB_MSG_ZH[warn_xhttp_ws_port_busy]='XHTTP WS 默认端口 %s/tcp 已被占用，已自动改用备用端口 %s/tcp。'
 TB_MSG_ZH[err_hy2_command]='Hysteria 2 选项仅可用于 install；update 和 rotate 会复用已保存的设置。'
 TB_MSG_ZH[err_hy2_cert_with_self_signed]='--hy2-cert 与 --hy2-key 不能与 --hy2-tls self-signed 同时使用。'
 TB_MSG_ZH[err_hy2_cert_pair_required]='--hy2-cert 与 --hy2-key 必须成对提供。'
@@ -584,7 +686,7 @@ TB_MSG_ZH[err_hy2_acme_requires_hook]='ACME 自动签发需要自动续期同步
 TB_MSG_ZH[err_hy2_acme_domain_required]='ACME 自动签发需要提供域名（请指定 --hy2-acme-domain 或域名形式的 --server-addr）。'
 TB_MSG_ZH[err_hy2_acme_email_required]='ACME 自动签发需要提供账户邮箱（--hy2-acme-email）。'
 TB_MSG_ZH[err_hy2_acme_tos_required]='ACME 自动签发需要明确同意 CA 服务条款（--hy2-acme-agree-tos）。'
-TB_MSG_ZH[err_hy2_acme_port80_conflict]='Certbot standalone HTTP-01 需要占用 TCP 80 端口，与已配置的 VLESS 或 Shadowsocks TCP 80 端口冲突。'
+TB_MSG_ZH[err_hy2_acme_port80_conflict]='Certbot standalone HTTP-01 需要占用 TCP 80 端口，与已配置的 TCP 80 监听端口冲突。'
 TB_MSG_ZH[err_hy2_acme_port80_busy]='TCP 80 端口已被占用：%s。Certbot standalone 验证需要空闲的 80 端口，ToastBox 不会自动停止现有服务；若同机已有网站，请改用 --hy2-cert 与 --hy2-key 导入已有证书。'
 TB_MSG_ZH[err_hy2_acme_dns_unresolvable]='域名 %s 在 DNS 中无法解析到任何 IP 地址，请先将 A/AAAA 记录指向本服务器后再使用 ACME。'
 TB_MSG_ZH[err_hy2_acme_dns_private]='域名 %s 仅解析到非公网 IP（%s）；Let'\''s Encrypt HTTP-01 公网验证要求解析到公网 IP。'
@@ -606,15 +708,15 @@ TB_MSG_ZH[err_hy2_hop_no_backend]='Hysteria 2 UDP 端口跳跃需要 nftables（
 TB_MSG_ZH[err_hy2_hop_no_cmd]='Hysteria 2 UDP 端口跳跃需要“%s”命令。'
 TB_MSG_ZH[err_hy2_hop_apply]='配置 Hysteria 2 UDP 端口跳跃 NAT 规则失败。'
 TB_MSG_ZH[err_refresh_options]='refresh-cert 不接受安装或展示参数（仅支持 --yes / --lang）。'
-TB_MSG_ZH[err_refresh_requires_hy2]='此节点未启用 Hysteria 2。'
-TB_MSG_ZH[err_refresh_requires_files]='refresh-cert 仅适用于 Hysteria 2 的 files 证书模式。'
-TB_MSG_ZH[info_hy2_cert_unchanged]='Hysteria 2 证书链与私钥内容未变化，无需重启。'
-TB_MSG_ZH[ok_hy2_cert_refreshed]='Hysteria 2 证书已刷新。'
+TB_MSG_ZH[err_refresh_requires_protocol]='此节点未启用 Hysteria 2，也未启用需要外部证书的 XHTTP TLS 模式。'
+TB_MSG_ZH[err_refresh_requires_files]='refresh-cert 仅适用于 Hysteria 2 或 XHTTP 的 files 证书模式。'
+TB_MSG_ZH[info_cert_unchanged]='证书链与私钥内容未变化，无需重启。'
+TB_MSG_ZH[ok_cert_refreshed]='TLS 证书已刷新。'
 TB_MSG_ZH[err_lock_open]='无法打开操作锁 %s。'
 TB_MSG_ZH[err_lock_busy]='另一项 ToastBox 操作正在持有锁 %s。'
 
 TB_MSG_ZH[prompt_core]='内核：1) xray  2) sing-box'
-TB_MSG_ZH[prompt_protocols]='协议：1) VLESS+SS  2) 仅 VLESS  3) 仅 SS  4) 仅 Hysteria 2  5) 三者全部（或逗号分隔）'
+TB_MSG_ZH[prompt_protocols]='协议：1) VLESS+SS  2) 仅 VLESS  3) 仅 SS  4) 仅 Hysteria 2  5) VLESS+SS+Hy2（all）  6) 仅 XHTTP（或逗号分隔）'
 TB_MSG_ZH[info_detect_addr]='正在检测本机公网地址……'
 TB_MSG_ZH[err_server_addr_required]='无法检测公网地址，请用 --server-addr 指定。'
 TB_MSG_ZH[prompt_server_addr]='客户端连接所用的地址（IP 或域名）'
@@ -648,8 +750,15 @@ TB_MSG_ZH[prompt_hy2_cert]='TLS 证书链 PEM 文件路径'
 TB_MSG_ZH[prompt_hy2_key]='TLS 私钥 PEM 文件路径'
 TB_MSG_ZH[prompt_hy2_sni]='Hysteria 2 TLS 证书验证名称（SNI）'
 TB_MSG_ZH[prompt_hy2_obfs]='Hysteria 2 混淆：1) 无（none）  2) salamander'
+TB_MSG_ZH[prompt_xhttp_tls]='XHTTP TLS：1) none（回环明文后端，配合本机反向代理，默认）  2) files（导入源站或公共证书，直接监听 443/8443 TLS）'
+TB_MSG_ZH[prompt_xhttp_host]='XHTTP 公网域名（Host / SNI），例如 edge.example.com'
+TB_MSG_ZH[prompt_xhttp_port]='XHTTP 监听 TCP 端口'
+TB_MSG_ZH[prompt_xhttp_connect_addr]='客户端直连 / Cloudflare 优选域名或 IP（留空则与公网域名相同）'
+TB_MSG_ZH[prompt_xhttp_cert]='XHTTP TLS 证书链 PEM 文件路径（如 Cloudflare Origin CA）'
+TB_MSG_ZH[prompt_xhttp_key]='XHTTP TLS 私钥 PEM 文件路径'
+TB_MSG_ZH[prompt_xhttp_ws_keepalive]='是否同时启用辅助 VLESS-WS 保活入站，用于长连接保活（如 ChatGPT 桌面端 / 空闲 SSH）？'
 TB_MSG_ZH[err_no_free_port]='找不到空闲端口，请用 --ss-port 指定。'
-TB_MSG_ZH[err_port_same]='VLESS 和 Shadowsocks 不能同时监听 TCP 端口 %s。'
+TB_MSG_ZH[err_port_same]='两个 TCP 监听不能同时绑定到端口 %s。'
 TB_MSG_ZH[err_port_same_udp]='Hysteria 2 和 Shadowsocks 不能同时监听 UDP 端口 %s。'
 TB_MSG_ZH[err_port_in_use]='端口 %s 已被占用：%s'
 TB_MSG_ZH[plan_title]='即将部署：'
@@ -723,13 +832,23 @@ TB_MSG_ZH[label_hop_ports]='跳跃端口'
 TB_MSG_ZH[label_hop_interval]='跳跃间隔'
 TB_MSG_ZH[label_acme_domain]='ACME 域名'
 TB_MSG_ZH[label_acme_lineage]='ACME 谱系'
+TB_MSG_ZH[label_backend]='后端监听'
+TB_MSG_ZH[label_connect_addr]='连接地址'
+TB_MSG_ZH[label_host]='域名（Host）'
+TB_MSG_ZH[label_path]='路径（Path）'
+TB_MSG_ZH[label_xhttp_mode]='XHTTP 模式'
+TB_MSG_ZH[label_alpn]='ALPN'
+TB_MSG_ZH[label_ws_heartbeat]='WS 心跳'
 TB_MSG_ZH[label_link]='分享链接：'
 TB_MSG_ZH[note_ss_landing]='注意：Shadowsocks 没有 TLS 伪装，适合作为中转之后的落地节点，不适合直接穿越审查防火墙。'
-TB_MSG_ZH[note_client_configs]='客户端配置：show --format xray、show --format sing-box 或 show --format hysteria2；仅链接：show --format links；二维码：show --qr。'
+TB_MSG_ZH[note_client_configs]='客户端配置：show --format xray、show --format sing-box、show --format hysteria2 或 show --format mihomo；仅链接：show --format links；二维码：show --qr。'
 TB_MSG_ZH[note_hy2_hop_clients]='端口跳跃客户端要求：Hysteria app/v2.14.0+、Xray 26.11.9+（udphop）或 sing-box 1.11.0+。'
 TB_MSG_ZH[note_hy2_hop_random_clients]='随机间隔跳跃客户端要求：Hysteria app/v2.14.0+、Xray 26.11.9+（udphop）或 sing-box 1.14.0+（hop_interval_max）。'
 TB_MSG_ZH[note_hop_no_firewall]='注意：--no-firewall 仅跳过 ufw；若开启端口跳跃，仍会配置必需的 PREROUTING NAT 转发规则。'
 TB_MSG_ZH[note_hy2_acme_firewall]='ACME HTTP-01 自动续期需要防火墙与云安全组均保持放行 TCP 80；证书刷新时会重启 %s（连接短暂中断）。'
+TB_MSG_ZH[note_xhttp_ws_keepalive]='注意：Xray 启动时会对 WebSocket 传输层打印弃用提示（官方保留不移除），当前主线中 heartbeatPeriod 正常生效。'
+TB_MSG_ZH[note_xhttp_nginx]='使用“show --format nginx”查看 Nginx 反代 location 片段；请确认 Cloudflare 已开启 gRPC 与 WebSockets 并将 SSL/TLS 设为“完全（严格）”。'
+TB_MSG_ZH[note_xhttp_mihomo_ver]='完整 Clash / Mihomo 配置：“show --format mihomo”（需 Mihomo >= v1.19.34）。'
 TB_MSG_ZH[note_firewall]='如果服务商另有防火墙 / 安全组，请在那里同样放行上述端口。'
 TB_MSG_ZH[note_security_group_udp]='云厂商安全组需放行的 UDP 端口：%s'
 
@@ -741,7 +860,7 @@ TB_MSG_ZH[menu_items]='  1) 安装或重新配置节点
   0) 退出'
 TB_MSG_ZH[prompt_menu]='请选择'
 
-TB_MSG_ZH[usage]='ToastBox %s - 基于 Xray 或 sing-box 部署 VLESS-TCP-REALITY-Vision、Shadowsocks 2022 与 Hysteria 2 节点
+TB_MSG_ZH[usage]='ToastBox %s - 基于 Xray 或 sing-box 部署 VLESS-TCP-REALITY-Vision、VLESS-XHTTP、Shadowsocks 2022 与 Hysteria 2 节点
 
 用法：toastbox.sh [命令] [选项]
 
@@ -752,15 +871,15 @@ TB_MSG_ZH[usage]='ToastBox %s - 基于 Xray 或 sing-box 部署 VLESS-TCP-REALIT
   show         显示连接信息、分享链接或客户端配置
   update       升级内核并重启节点
   rotate       重新生成 UUID / 密钥 / 密码
-  refresh-cert 从已登记来源刷新 Hysteria 2 证书与私钥
+  refresh-cert 从已登记来源刷新 Hysteria 2 或 XHTTP 证书与私钥
   uninstall    移除内核和节点
   help, version
 
 install 的选项：
   --core xray|sing-box        使用的内核（默认：xray）
-  --protocols LIST            vless、ss、hy2、both（vless,ss）、all（三者全部），
+  --protocols LIST            vless、ss、hy2、xhttp、both（vless,ss）、all（vless,ss,hy2），
                               或逗号分隔组合（默认：vless,ss）
-  --server-addr ADDR          客户端连接所用的地址（默认：自动检测）
+  --server-addr ADDR          客户端连接所用的地址（默认：自动检测；xhttp 可直接继承域名）
   --name NAME                 分享链接中的节点名称（默认：ToastBox）
   --listen ADDR               绑定到指定的本机地址（默认：全部）
   --vless-port PORT           VLESS 端口（默认：443）
@@ -786,6 +905,24 @@ install 的选项：
   --hy2-hop-ports LIST|none   UDP 端口跳跃范围（如 20000-20100,30000）
   --hy2-hop-interval SEC|MIN-MAX  端口跳跃间隔（整数秒 >=5，默认 30）
   --hy2-renew-cert            重新签发自签 Hysteria 2 证书
+  --xhttp-tls none|files      XHTTP TLS：none（回环反代后端，默认）或 files
+  --xhttp-listen ADDR         XHTTP 绑定地址（none 须为回环；默认 127.0.0.1 / ::）
+  --xhttp-port PORT           XHTTP 监听 TCP 端口（none 默认 10000，files 默认 443）
+  --xhttp-public-port PORT    none 模式下客户端对外 HTTPS 端口（默认 443）
+  --xhttp-host DOMAIN         XHTTP 公网域名 / SNI（或域名形式的 --server-addr）
+  --xhttp-connect-addr ADDR   客户端优选连接域名/IP（传空值可恢复与 host 相同）
+  --xhttp-path PATH           XHTTP 请求路径（默认：随机 /<slug>）
+  --xhttp-mode MODE           服务端 XHTTP 模式：auto（默认）、packet-up、stream-up 或 stream-one
+  --xhttp-client-mode MODE    客户端 XHTTP 模式：packet-up（默认）、auto、stream-up 或 stream-one
+  --xhttp-alpn MODE           h2（默认）、h3 或 http/1.1
+  --xhttp-cert FILE           导入的 XHTTP 证书链 PEM 文件（--xhttp-tls files）
+  --xhttp-key FILE            导入的 XHTTP 私钥 PEM 文件（--xhttp-tls files）
+  --xhttp-cert-hook MODE      certbot（安装续期部署钩子）或 none
+  --xhttp-ws-keepalive        启用辅助 VLESS-WS 保活入站（--no-xhttp-ws-keepalive 关闭）
+  --xhttp-ws-port PORT        WS 监听端口（none 默认 10001，files 默认 8443/2053）
+  --xhttp-ws-public-port PORT none 模式下 WS 对外 HTTPS 端口（默认 443）
+  --xhttp-ws-path PATH        WS 请求路径（默认：随机 /<slug>）
+  --xhttp-ws-heartbeat SEC    Xray WebSocket heartbeatPeriod 秒数（默认：30）
   --tcp-keepalive-idle SEC    Xray TCP 保活空闲时间（1..32767 秒）
   --tcp-keepalive-interval SEC  Xray TCP 保活探测间隔（1..32767 秒）
   --tcp-user-timeout MS       Xray TCP 用户超时（1..2147483647 毫秒）
@@ -800,7 +937,7 @@ install 的选项：
                               （仅有 --yes 不会替换）
 
 show 的选项：
-  --format FORMAT             text（默认）、links、json、xray、sing-box、hysteria2
+  --format FORMAT             text（默认）、links、json、xray、sing-box、hysteria2、mihomo、nginx
   --protocols LIST            只输出指定的协议
   --qr                        同时输出二维码（text 格式）
 
@@ -2082,6 +2219,30 @@ cfg_reset() {
   CFG_HY2_HOP_INTERVAL_MIN=30
   CFG_HY2_HOP_INTERVAL_MAX=30
 
+  CFG_XHTTP=0
+  CFG_XHTTP_TLS=""
+  CFG_XHTTP_LISTEN=""
+  CFG_XHTTP_PORT=""
+  CFG_XHTTP_PUBLIC_PORT=""
+  CFG_XHTTP_CONNECT_ADDR=""
+  CFG_XHTTP_UUID=""
+  CFG_XHTTP_HOST=""
+  CFG_XHTTP_PATH=""
+  CFG_XHTTP_MODE=""
+  CFG_XHTTP_CLIENT_MODE=""
+  CFG_XHTTP_ALPN=""
+  CFG_XHTTP_CERT=""
+  CFG_XHTTP_KEY=""
+  CFG_XHTTP_CERT_SHA256=""
+  CFG_XHTTP_CERT_FILE=""
+  CFG_XHTTP_KEY_FILE=""
+  CFG_XHTTP_CERTBOT_HOOK=0
+  CFG_XHTTP_WS=0
+  CFG_XHTTP_WS_PORT=""
+  CFG_XHTTP_WS_PUBLIC_PORT=""
+  CFG_XHTTP_WS_PATH=""
+  CFG_XHTTP_WS_HEARTBEAT="$TB_XHTTP_DEFAULT_WS_HEARTBEAT"
+
   CFG_FW_RULES=()
 }
 cfg_reset
@@ -2131,6 +2292,29 @@ state_json() {
     --arg hy2_hop_ports "$CFG_HY2_HOP_PORTS" \
     --arg hy2_hop_min "$CFG_HY2_HOP_INTERVAL_MIN" \
     --arg hy2_hop_max "$CFG_HY2_HOP_INTERVAL_MAX" \
+    --arg xhttp "$CFG_XHTTP" \
+    --arg xhttp_tls "$CFG_XHTTP_TLS" \
+    --arg xhttp_listen "$CFG_XHTTP_LISTEN" \
+    --arg xhttp_port "$CFG_XHTTP_PORT" \
+    --arg xhttp_public_port "$CFG_XHTTP_PUBLIC_PORT" \
+    --arg xhttp_connect_addr "$CFG_XHTTP_CONNECT_ADDR" \
+    --arg xhttp_uuid "$CFG_XHTTP_UUID" \
+    --arg xhttp_host "$CFG_XHTTP_HOST" \
+    --arg xhttp_path "$CFG_XHTTP_PATH" \
+    --arg xhttp_mode "$CFG_XHTTP_MODE" \
+    --arg xhttp_client_mode "$CFG_XHTTP_CLIENT_MODE" \
+    --arg xhttp_alpn "$CFG_XHTTP_ALPN" \
+    --arg xhttp_cert "$CFG_XHTTP_CERT" \
+    --arg xhttp_key "$CFG_XHTTP_KEY" \
+    --arg xhttp_cert_sha256 "$CFG_XHTTP_CERT_SHA256" \
+    --arg xhttp_cert_file "$CFG_XHTTP_CERT_FILE" \
+    --arg xhttp_key_file "$CFG_XHTTP_KEY_FILE" \
+    --arg xhttp_certbot_hook "$CFG_XHTTP_CERTBOT_HOOK" \
+    --arg xhttp_ws "$CFG_XHTTP_WS" \
+    --arg xhttp_ws_port "$CFG_XHTTP_WS_PORT" \
+    --arg xhttp_ws_public_port "$CFG_XHTTP_WS_PUBLIC_PORT" \
+    --arg xhttp_ws_path "$CFG_XHTTP_WS_PATH" \
+    --arg xhttp_ws_heartbeat "$CFG_XHTTP_WS_HEARTBEAT" \
     --args '
     def port: if . == "" then null else tonumber end;
     {
@@ -2188,6 +2372,33 @@ state_json() {
           interval_max: ($hy2_hop_max | tonumber)
         }
       },
+      xhttp: {
+        enabled: ($xhttp == "1"),
+        tls: $xhttp_tls,
+        listen: $xhttp_listen,
+        port: ($xhttp_port | port),
+        public_port: ($xhttp_public_port | port),
+        connect_addr: $xhttp_connect_addr,
+        uuid: $xhttp_uuid,
+        host: $xhttp_host,
+        path: $xhttp_path,
+        mode: $xhttp_mode,
+        client_mode: $xhttp_client_mode,
+        alpn: $xhttp_alpn,
+        cert: $xhttp_cert,
+        key: $xhttp_key,
+        cert_sha256: $xhttp_cert_sha256,
+        cert_file: $xhttp_cert_file,
+        key_file: $xhttp_key_file,
+        certbot_hook: ($xhttp_certbot_hook == "1"),
+        ws: {
+          enabled: ($xhttp_ws == "1"),
+          port: ($xhttp_ws_port | port),
+          public_port: ($xhttp_ws_public_port | port),
+          path: $xhttp_ws_path,
+          heartbeat: ($xhttp_ws_heartbeat | tonumber)
+        }
+      },
       firewall: {rules: $ARGS.positional}
     }' "${CFG_FW_RULES[@]}"
 }
@@ -2220,6 +2431,49 @@ check_sockopt_support() {
   fi
 }
 
+check_xhttp_core_support() {
+  if [[ "$1" != "xray" && "$CFG_XHTTP" == "1" ]]; then
+    die err_xhttp_core "$1"
+  fi
+}
+
+xhttp_state_valid() {
+  [[ "$CFG_XHTTP_WS_HEARTBEAT" =~ ^[0-9]+$ ]] &&
+    ((10#$CFG_XHTTP_WS_HEARTBEAT >= 1 && 10#$CFG_XHTTP_WS_HEARTBEAT <= 3600)) || return 1
+  if [[ "$CFG_XHTTP" == "1" ]]; then
+    [[ "$CFG_XHTTP_TLS" == "none" || "$CFG_XHTTP_TLS" == "files" ]] || return 1
+    if [[ -n "$CFG_XHTTP_LISTEN" ]]; then
+      if [[ "$CFG_XHTTP_TLS" == "none" ]]; then
+        hy2_hop_is_loopback "$CFG_XHTTP_LISTEN" || return 1
+      fi
+      valid_host "$CFG_XHTTP_LISTEN" || [[ "$CFG_XHTTP_LISTEN" == "::" ]] || return 1
+    elif [[ "$CFG_XHTTP_TLS" == "none" ]]; then
+      return 1
+    fi
+    if [[ "$CFG_XHTTP_TLS" == "files" ]]; then
+      [[ -n "$CFG_XHTTP_CERT" && -n "$CFG_XHTTP_KEY" ]] || return 1
+    fi
+    valid_port "$CFG_XHTTP_PORT" || return 1
+    valid_port "$CFG_XHTTP_PUBLIC_PORT" || return 1
+    if [[ -n "$CFG_XHTTP_CONNECT_ADDR" ]]; then
+      valid_host "$CFG_XHTTP_CONNECT_ADDR" || return 1
+    fi
+    valid_uuid "$CFG_XHTTP_UUID" || return 1
+    valid_domain "$CFG_XHTTP_HOST" || return 1
+    valid_xhttp_path "$CFG_XHTTP_PATH" || return 1
+    in_list "$CFG_XHTTP_MODE" "${TB_XHTTP_MODES[@]}" || return 1
+    in_list "$CFG_XHTTP_CLIENT_MODE" "${TB_XHTTP_MODES[@]}" || return 1
+    in_list "$CFG_XHTTP_ALPN" "${TB_XHTTP_ALPNS[@]}" || return 1
+    if [[ "$CFG_XHTTP_WS" == "1" ]]; then
+      valid_port "$CFG_XHTTP_WS_PORT" || return 1
+      valid_port "$CFG_XHTTP_WS_PUBLIC_PORT" || return 1
+      valid_xhttp_path "$CFG_XHTTP_WS_PATH" || return 1
+      ! xhttp_paths_conflict "$CFG_XHTTP_PATH" "$CFG_XHTTP_WS_PATH" || return 1
+    fi
+  fi
+  return 0
+}
+
 # Loads state.json into CFG_*. Returns 1 when there is no state yet.
 state_load() {
   local assignments sockopt
@@ -2242,14 +2496,25 @@ state_load() {
       elif (type == "number") and (. == floor) and . >= 5 and . <= 2147483647 then .
       else error("invalid hy2 hop interval")
       end;
+    def ws_hb_int(defv):
+      if . == null then defv
+      elif (type == "number") and (. == floor) and . >= 1 and . <= 3600 then .
+      else error("invalid xhttp ws heartbeat")
+      end;
     if (.schema | type) != "number" then error("missing schema") else . end
     | if (.hy2.hop != null) and ((.hy2.hop | type) != "object") then error("invalid hy2.hop") else . end
     | if (.hy2.hop.ports != null) and ((.hy2.hop.ports | type) != "string") then error("invalid hy2.hop.ports") else . end
     | if (.hy2.certbot_hook != null) and ((.hy2.certbot_hook | type) != "boolean") then error("invalid hy2.certbot_hook") else . end
     | if (.hy2.acme != null) and ((.hy2.acme | type) != "object") then error("invalid hy2.acme") else . end
     | if (.hy2.acme.enabled != null) and ((.hy2.acme.enabled | type) != "boolean") then error("invalid hy2.acme.enabled") else . end
+    | if (.xhttp != null) and ((.xhttp | type) != "object") then error("invalid xhttp") else . end
+    | if (.xhttp.enabled != null) and ((.xhttp.enabled | type) != "boolean") then error("invalid xhttp.enabled") else . end
+    | if (.xhttp.certbot_hook != null) and ((.xhttp.certbot_hook | type) != "boolean") then error("invalid xhttp.certbot_hook") else . end
+    | if (.xhttp.ws != null) and ((.xhttp.ws | type) != "object") then error("invalid xhttp.ws") else . end
+    | if (.xhttp.ws.enabled != null) and ((.xhttp.ws.enabled | type) != "boolean") then error("invalid xhttp.ws.enabled") else . end
     | ((.hy2.hop.interval_min | hop_int(30))) as $hmin
     | ((.hy2.hop.interval_max | hop_int(30))) as $hmax
+    | ((.xhttp.ws.heartbeat | ws_hb_int('"$TB_XHTTP_DEFAULT_WS_HEARTBEAT"'))) as $xhb
     | if $hmin > $hmax then error("invalid hy2 hop interval range") else . end
     | @sh "CFG_CORE=\(.core | text)",
       @sh "CFG_SERVER_ADDR=\(.server_addr | text)",
@@ -2291,11 +2556,35 @@ state_load() {
       @sh "CFG_HY2_HOP_PORTS=\(.hy2.hop.ports | text)",
       @sh "CFG_HY2_HOP_INTERVAL_MIN=\($hmin | tostring)",
       @sh "CFG_HY2_HOP_INTERVAL_MAX=\($hmax | tostring)",
+      @sh "CFG_XHTTP=\(.xhttp.enabled | flag)",
+      @sh "CFG_XHTTP_TLS=\(.xhttp.tls | text)",
+      @sh "CFG_XHTTP_LISTEN=\(.xhttp.listen | text)",
+      @sh "CFG_XHTTP_PORT=\(.xhttp.port | text)",
+      @sh "CFG_XHTTP_PUBLIC_PORT=\(.xhttp.public_port | text)",
+      @sh "CFG_XHTTP_CONNECT_ADDR=\(.xhttp.connect_addr | text)",
+      @sh "CFG_XHTTP_UUID=\(.xhttp.uuid | text)",
+      @sh "CFG_XHTTP_HOST=\(.xhttp.host | text)",
+      @sh "CFG_XHTTP_PATH=\(.xhttp.path | text)",
+      @sh "CFG_XHTTP_MODE=\(.xhttp.mode | text)",
+      @sh "CFG_XHTTP_CLIENT_MODE=\(.xhttp.client_mode | text)",
+      @sh "CFG_XHTTP_ALPN=\(.xhttp.alpn | text)",
+      @sh "CFG_XHTTP_CERT=\(.xhttp.cert | text)",
+      @sh "CFG_XHTTP_KEY=\(.xhttp.key | text)",
+      @sh "CFG_XHTTP_CERT_SHA256=\(.xhttp.cert_sha256 | text)",
+      @sh "CFG_XHTTP_CERT_FILE=\(.xhttp.cert_file | text)",
+      @sh "CFG_XHTTP_KEY_FILE=\(.xhttp.key_file | text)",
+      @sh "CFG_XHTTP_CERTBOT_HOOK=\(.xhttp.certbot_hook | flag)",
+      @sh "CFG_XHTTP_WS=\(.xhttp.ws.enabled | flag)",
+      @sh "CFG_XHTTP_WS_PORT=\(.xhttp.ws.port | text)",
+      @sh "CFG_XHTTP_WS_PUBLIC_PORT=\(.xhttp.ws.public_port | text)",
+      @sh "CFG_XHTTP_WS_PATH=\(.xhttp.ws.path | text)",
+      @sh "CFG_XHTTP_WS_HEARTBEAT=\($xhb | tostring)",
       "CFG_FW_RULES=(" + ((.firewall.rules // []) | map(@sh) | join(" ")) + ")"
   ' "$TB_STATE_FILE" 2>/dev/null)" || die err_state_corrupt "$TB_STATE_FILE"
 
   eval "$assignments"
-  if ! hy2_hop_validate_saved "$CFG_HY2_HOP_PORTS" "$CFG_HY2_HOP_INTERVAL_MIN" "$CFG_HY2_HOP_INTERVAL_MAX"; then
+  if ! hy2_hop_validate_saved "$CFG_HY2_HOP_PORTS" "$CFG_HY2_HOP_INTERVAL_MIN" "$CFG_HY2_HOP_INTERVAL_MAX" ||
+    ! xhttp_state_valid; then
     die err_state_corrupt "$TB_STATE_FILE"
   fi
   CFG_SOCKOPT="$sockopt"
@@ -2377,6 +2666,24 @@ valid_hy2_password() {
 
 gen_hy2_password() {
   openssl rand -base64 24 | tr '+/' '-_' | tr -d '=\n'
+}
+
+valid_xhttp_path() {
+  local p="$1"
+  ((${#p} >= 2 && ${#p} <= 128)) || return 1
+  [[ "$p" =~ ^/[A-Za-z0-9._~/-]+$ ]] || return 1
+  [[ "$p" != "/" && "$p" != *//* && "$p" != *..* && "$p" != */ ]] || return 1
+  [[ "/${p#/}/" != */./* ]]
+}
+
+gen_xhttp_path() {
+  printf '/%s' "$(openssl rand -hex 8)"
+}
+
+xhttp_paths_conflict() {
+  local a="$1" b="$2"
+  [[ -n "$a" && -n "$b" ]] || return 1
+  [[ "$a" == "$b" || "$b" == "$a/"* || "$a" == "$b/"* ]]
 }
 
 gen_uuid() {
@@ -2461,6 +2768,21 @@ ensure_credentials() {
       CFG_HY2_CERT_SHA256="$(tls_cert_sha256_pem "$CFG_HY2_CERT")" || die err_hy2_tls_invalid
     fi
   fi
+  if [[ "$CFG_XHTTP" == "1" ]]; then
+    valid_uuid "$CFG_XHTTP_UUID" || CFG_XHTTP_UUID="$(gen_uuid)"
+    valid_xhttp_path "$CFG_XHTTP_PATH" || CFG_XHTTP_PATH="$(gen_xhttp_path)"
+    if [[ "$CFG_XHTTP_WS" == "1" ]]; then
+      if ! valid_xhttp_path "$CFG_XHTTP_WS_PATH" || xhttp_paths_conflict "$CFG_XHTTP_PATH" "$CFG_XHTTP_WS_PATH"; then
+        CFG_XHTTP_WS_PATH="$(gen_xhttp_path)"
+        while xhttp_paths_conflict "$CFG_XHTTP_PATH" "$CFG_XHTTP_WS_PATH"; do
+          CFG_XHTTP_WS_PATH="$(gen_xhttp_path)"
+        done
+      fi
+    fi
+    if [[ "$CFG_XHTTP_TLS" == "files" && -z "$CFG_XHTTP_CERT_SHA256" && -n "$CFG_XHTTP_CERT" ]]; then
+      CFG_XHTTP_CERT_SHA256="$(tls_cert_sha256_pem "$CFG_XHTTP_CERT")" || die err_xhttp_tls_invalid
+    fi
+  fi
 }
 
 clear_credentials() {
@@ -2471,6 +2793,7 @@ clear_credentials() {
   CFG_SS_PASSWORD=""
   CFG_HY2_PASSWORD=""
   CFG_HY2_OBFS_PASSWORD=""
+  CFG_XHTTP_UUID=""
 }
 
 # ===== src/lib/55-tls.sh =====
@@ -2773,18 +3096,28 @@ renewed="\${RENEWED_LINEAGE:-}"
 [[ -r "\$state_file" ]] || exit 0
 
 eval "\$(jq -r '
-  if (.hy2.enabled // false) == true and (.hy2.tls // "") == "files" and (.hy2.certbot_hook // false) == true
-  then @sh "cert_file=\(.hy2.cert_file // "")"
-  else "cert_file="
-  end
-' "\$state_file" 2>/dev/null || echo 'cert_file=')"
+  (if (.hy2.enabled // false) == true and (.hy2.tls // "") == "files" and (.hy2.certbot_hook // false) == true
+   then (.hy2.cert_file // "") else "" end) as \$hy2_cert
+  | (if (.xhttp.enabled // false) == true and (.xhttp.tls // "") == "files" and (.xhttp.certbot_hook // false) == true
+     then (.xhttp.cert_file // "") else "" end) as \$xhttp_cert
+  | @sh "hy2_cert_file=\(\$hy2_cert)",
+    @sh "xhttp_cert_file=\(\$xhttp_cert)"
+' "\$state_file" 2>/dev/null || printf 'hy2_cert_file=\nxhttp_cert_file=\n')"
 
-[[ -n "\${cert_file:-}" ]] || exit 0
-expected_lineage="\$(dirname -- "\$cert_file")"
 renewed="\${renewed%/}"
-expected_lineage="\${expected_lineage%/}"
+matched=0
 
-if [[ "\$renewed" != "\$expected_lineage" ]]; then
+for cert_file in "\${hy2_cert_file:-}" "\${xhttp_cert_file:-}"; do
+  [[ -n "\$cert_file" ]] || continue
+  expected_lineage="\$(dirname -- "\$cert_file")"
+  expected_lineage="\${expected_lineage%/}"
+  if [[ "\$renewed" == "\$expected_lineage" ]]; then
+    matched=1
+    break
+  fi
+done
+
+if [[ "\$matched" != "1" ]]; then
   exit 0
 fi
 
@@ -3396,8 +3729,26 @@ xray_render() {
     --arg hy2_obfs "$CFG_HY2_OBFS" \
     --arg hy2_obfs_password "$CFG_HY2_OBFS_PASSWORD" \
     --arg hy2_masquerade "$CFG_HY2_MASQUERADE" \
+    --arg xhttp "$CFG_XHTTP" \
+    --arg xhttp_tls "$CFG_XHTTP_TLS" \
+    --arg xhttp_listen "$CFG_XHTTP_LISTEN" \
+    --arg xhttp_port "$CFG_XHTTP_PORT" \
+    --arg xhttp_uuid "$CFG_XHTTP_UUID" \
+    --arg xhttp_host "$CFG_XHTTP_HOST" \
+    --arg xhttp_path "$CFG_XHTTP_PATH" \
+    --arg xhttp_mode "$CFG_XHTTP_MODE" \
+    --arg xhttp_cert "$CFG_XHTTP_CERT" \
+    --arg xhttp_key "$CFG_XHTTP_KEY" \
+    --arg xhttp_ws "$CFG_XHTTP_WS" \
+    --arg xhttp_ws_port "$CFG_XHTTP_WS_PORT" \
+    --arg xhttp_ws_path "$CFG_XHTTP_WS_PATH" \
+    --arg xhttp_ws_heartbeat "$CFG_XHTTP_WS_HEARTBEAT" \
     --args '
     def with_listen: if $listen == "" then . else {listen: $listen} + . end;
+    def with_xhttp_listen:
+      if $xhttp_listen != "" then {listen: $xhttp_listen} + .
+      elif $listen != "" then {listen: $listen} + .
+      else . end;
     # routeOnly: the sniffed protocol is used for routing only, the
     # destination of the connection is left untouched.
     def with_sniffing:
@@ -3487,6 +3838,94 @@ xray_render() {
               }
             } else {} end))
           } | with_listen | with_sniffing
+        else empty end),
+        (if $xhttp == "1" then
+          {
+            tag: "vless-xhttp",
+            port: ($xhttp_port | tonumber),
+            protocol: "vless",
+            settings: {
+              users: [{id: $xhttp_uuid}],
+              decryption: "none"
+            },
+            streamSettings: (
+              if $xhttp_tls == "files" then
+                {
+                  method: "xhttp",
+                  security: "tls",
+                  tlsSettings: {
+                    serverName: $xhttp_host,
+                    rejectUnknownSni: true,
+                    alpn: ["h2", "http/1.1"],
+                    certificates: [
+                      {
+                        certificate: ($xhttp_cert | pem_lines),
+                        key: ($xhttp_key | pem_lines)
+                      }
+                    ]
+                  },
+                  xhttpSettings: {
+                    host: $xhttp_host,
+                    path: $xhttp_path,
+                    mode: $xhttp_mode
+                  }
+                } + (if $sockopt == {} then {} else {sockopt: $sockopt} end)
+              else
+                {
+                  method: "xhttp",
+                  security: "none",
+                  xhttpSettings: {
+                    path: $xhttp_path,
+                    mode: $xhttp_mode
+                  }
+                }
+              end
+            )
+          } | with_xhttp_listen | with_sniffing
+        else empty end),
+        (if $xhttp == "1" and $xhttp_ws == "1" then
+          {
+            tag: "vless-ws-keepalive",
+            port: ($xhttp_ws_port | tonumber),
+            protocol: "vless",
+            settings: {
+              users: [{id: $xhttp_uuid}],
+              decryption: "none"
+            },
+            streamSettings: (
+              if $xhttp_tls == "files" then
+                {
+                  method: "websocket",
+                  security: "tls",
+                  tlsSettings: {
+                    serverName: $xhttp_host,
+                    rejectUnknownSni: true,
+                    alpn: ["http/1.1"],
+                    certificates: [
+                      {
+                        certificate: ($xhttp_cert | pem_lines),
+                        key: ($xhttp_key | pem_lines)
+                      }
+                    ]
+                  },
+                  wsSettings: {
+                    host: $xhttp_host,
+                    path: $xhttp_ws_path,
+                    heartbeatPeriod: ($xhttp_ws_heartbeat | tonumber)
+                  }
+                } + (if $sockopt == {} then {} else {sockopt: $sockopt} end)
+              else
+                {
+                  method: "websocket",
+                  security: "none",
+                  wsSettings: {
+                    path: $xhttp_ws_path,
+                    heartbeatPeriod: ($xhttp_ws_heartbeat | tonumber)
+                  }
+                }
+              end
+            )
+          } | with_xhttp_listen | with_sniffing
         else empty end)
       ],
       outbounds: [
@@ -3606,6 +4045,7 @@ singbox_render() {
   # Xray sockopt names are not sing-box listen fields; never drop them
   # silently when switching cores or rendering directly.
   check_sockopt_support sing-box
+  check_xhttp_core_support sing-box
   if [[ -z "$listen" ]]; then
     # `listen` is required. "::" is dual-stack, but fails to bind on hosts
     # where IPv6 is disabled.
@@ -3729,6 +4169,10 @@ link_label() {
   printf '%s-%s' "${CFG_NODE_NAME:-ToastBox}" "$1"
 }
 
+xhttp_dial_addr() {
+  printf '%s' "${CFG_XHTTP_CONNECT_ADDR:-$CFG_XHTTP_HOST}"
+}
+
 # Share link in the format understood by v2rayN / v2rayNG / NekoBox /
 # Shadowrocket and friends. `type=tcp` is the name clients use for what
 # Xray now calls the RAW transport.
@@ -3775,10 +4219,41 @@ hy2_link() {
     "$query" "$(urlencode "$(link_label hy2)")"
 }
 
-# client_jq FILTER: runs a jq filter with the arguments shared by both
-# client renderers. OUT_VLESS / OUT_SS / OUT_HY2 select which outbounds are emitted.
+# Standard VLESS + XHTTP share link understood by v2rayN / v2rayNG / Xray.
+xhttp_link() {
+  local dial query
+  dial="$(uri_host "$(xhttp_dial_addr)")"
+  query="encryption=none&security=tls"
+  query+="&sni=$(urlencode "$CFG_XHTTP_HOST")"
+  query+="&alpn=$(urlencode "$CFG_XHTTP_ALPN")"
+  query+="&fp=chrome&type=xhttp"
+  query+="&host=$(urlencode "$CFG_XHTTP_HOST")"
+  query+="&path=$(urlencode "$CFG_XHTTP_PATH")"
+  query+="&mode=$(urlencode "$CFG_XHTTP_CLIENT_MODE")"
+  printf 'vless://%s@%s:%s?%s#%s\n' \
+    "$CFG_XHTTP_UUID" "$dial" "$CFG_XHTTP_PUBLIC_PORT" \
+    "$query" "$(urlencode "$(link_label xhttp)")"
+}
+
+xhttp_ws_link() {
+  local dial query
+  dial="$(uri_host "$(xhttp_dial_addr)")"
+  query="encryption=none&security=tls"
+  query+="&sni=$(urlencode "$CFG_XHTTP_HOST")"
+  query+="&alpn=$(urlencode "http/1.1")"
+  query+="&fp=chrome&type=ws"
+  query+="&host=$(urlencode "$CFG_XHTTP_HOST")"
+  query+="&path=$(urlencode "$CFG_XHTTP_WS_PATH")"
+  printf 'vless://%s@%s:%s?%s#%s\n' \
+    "$CFG_XHTTP_UUID" "$dial" "$CFG_XHTTP_WS_PUBLIC_PORT" \
+    "$query" "$(urlencode "$(link_label xhttp-ws)")"
+}
+
+# client_jq ARGS...: runs jq with the arguments shared by all client
+# renderers. OUT_VLESS / OUT_SS / OUT_HY2 / OUT_XHTTP select which outbounds are emitted.
 client_jq() {
   jq -n \
+    --arg node_name "${CFG_NODE_NAME:-ToastBox}" \
     --arg server "$CFG_SERVER_ADDR" \
     --arg vless "$OUT_VLESS" \
     --arg vless_port "$CFG_VLESS_PORT" \
@@ -3790,6 +4265,7 @@ client_jq() {
     --arg ss_port "$CFG_SS_PORT" \
     --arg ss_method "$CFG_SS_METHOD" \
     --arg ss_password "$CFG_SS_PASSWORD" \
+    --arg ss_network "$CFG_SS_NETWORK" \
     --arg hy2 "$OUT_HY2" \
     --arg hy2_port "$CFG_HY2_PORT" \
     --arg hy2_password "$CFG_HY2_PASSWORD" \
@@ -3802,7 +4278,19 @@ client_jq() {
     --arg hy2_hop_ports "$CFG_HY2_HOP_PORTS" \
     --arg hy2_hop_min "$CFG_HY2_HOP_INTERVAL_MIN" \
     --arg hy2_hop_max "$CFG_HY2_HOP_INTERVAL_MAX" \
-    "$1"
+    --arg xhttp "$OUT_XHTTP" \
+    --arg xhttp_dial "$(xhttp_dial_addr)" \
+    --arg xhttp_public_port "$CFG_XHTTP_PUBLIC_PORT" \
+    --arg xhttp_connect_addr "$CFG_XHTTP_CONNECT_ADDR" \
+    --arg xhttp_uuid "$CFG_XHTTP_UUID" \
+    --arg xhttp_host "$CFG_XHTTP_HOST" \
+    --arg xhttp_path "$CFG_XHTTP_PATH" \
+    --arg xhttp_client_mode "$CFG_XHTTP_CLIENT_MODE" \
+    --arg xhttp_alpn "$CFG_XHTTP_ALPN" \
+    --arg xhttp_ws "$CFG_XHTTP_WS" \
+    --arg xhttp_ws_public_port "$CFG_XHTTP_WS_PUBLIC_PORT" \
+    --arg xhttp_ws_path "$CFG_XHTTP_WS_PATH" \
+    "$@"
 }
 
 # A complete Xray client configuration: SOCKS5 on 127.0.0.1:1080. The first
@@ -3813,13 +4301,20 @@ client_xray_json() {
     {
       log: {logLevel: "warning"},
       inbounds: [
-        {
+        ({
           tag: "socks-in",
           listen: "127.0.0.1",
           port: 1080,
           protocol: "socks",
           settings: {udp: true}
         }
+        + (if $xhttp == "1" and $xhttp_ws == "1" then {
+          sniffing: {
+            enabled: true,
+            destOverride: ["http", "tls"],
+            routeOnly: true
+          }
+        } else {} end))
       ],
       outbounds: [
         (if $vless == "1" then
@@ -3841,6 +4336,59 @@ client_xray_json() {
                 fingerprint: "chrome",
                 password: $public_key,
                 shortId: $short_id
+              }
+            }
+          }
+        else empty end),
+        (if $xhttp == "1" then
+          {
+            tag: "vless-xhttp",
+            protocol: "vless",
+            settings: {
+              address: $xhttp_dial,
+              port: ($xhttp_public_port | tonumber),
+              id: $xhttp_uuid,
+              encryption: "none"
+            },
+            streamSettings: {
+              method: "xhttp",
+              security: "tls",
+              tlsSettings: {
+                serverName: $xhttp_host,
+                alpn: ($xhttp_alpn | split(",")),
+                fingerprint: "chrome",
+                useSystemCA: true
+              },
+              xhttpSettings: {
+                host: $xhttp_host,
+                path: $xhttp_path,
+                mode: $xhttp_client_mode
+              }
+            }
+          }
+        else empty end),
+        (if $xhttp == "1" and $xhttp_ws == "1" then
+          {
+            tag: "vless-ws-keepalive",
+            protocol: "vless",
+            settings: {
+              address: $xhttp_dial,
+              port: ($xhttp_ws_public_port | tonumber),
+              id: $xhttp_uuid,
+              encryption: "none"
+            },
+            streamSettings: {
+              method: "websocket",
+              security: "tls",
+              tlsSettings: {
+                serverName: $xhttp_host,
+                alpn: ["http/1.1"],
+                fingerprint: "chrome",
+                useSystemCA: true
+              },
+              wsSettings: {
+                host: $xhttp_host,
+                path: $xhttp_ws_path
               }
             }
           }
@@ -3906,12 +4454,42 @@ client_xray_json() {
           }
         else empty end)
       ]
-    }'
+    }
+    + (if $xhttp == "1" and $xhttp_ws == "1" then {
+      routing: {
+        rules: [
+          {
+            domain: [
+              "domain:openai.com",
+              "domain:chatgpt.com",
+              "domain:oaistatic.com",
+              "domain:oaiusercontent.com"
+            ],
+            outboundTag: "vless-ws-keepalive"
+          },
+          {
+            port: "22",
+            network: "tcp",
+            outboundTag: "vless-ws-keepalive"
+          }
+        ]
+      }
+    } else {} end)'
 }
 
 # A complete sing-box client configuration: mixed (SOCKS5 + HTTP) proxy on
 # 127.0.0.1:1080. REALITY on the client side needs uTLS.
 client_singbox_json() {
+  if [[ "$OUT_XHTTP" == "1" ]]; then
+    if [[ "$CFG_XHTTP_WS" == "1" ]]; then
+      log_warn warn_singbox_xhttp_ws_only
+    else
+      if [[ "$OUT_VLESS" != "1" && "$OUT_SS" != "1" && "$OUT_HY2" != "1" ]]; then
+        die err_format_singbox_no_xhttp
+      fi
+      log_warn warn_singbox_skip_xhttp
+    fi
+  fi
   # shellcheck disable=SC2016  # jq variables, not shell ones
   client_jq '
     def pem_lines: sub("\n+$"; "") | split("\n");
@@ -3939,6 +4517,26 @@ client_singbox_json() {
               server_name: $sni,
               utls: {enabled: true, fingerprint: "chrome"},
               reality: {enabled: true, public_key: $public_key, short_id: $short_id}
+            }
+          }
+        else empty end),
+        (if $xhttp == "1" and $xhttp_ws == "1" then
+          {
+            type: "vless",
+            tag: "vless-ws-keepalive",
+            server: $xhttp_dial,
+            server_port: ($xhttp_ws_public_port | tonumber),
+            uuid: $xhttp_uuid,
+            tls: {
+              enabled: true,
+              server_name: $xhttp_host,
+              alpn: ["http/1.1"],
+              utls: {enabled: true, fingerprint: "chrome"}
+            },
+            transport: {
+              type: "ws",
+              path: $xhttp_ws_path,
+              headers: {Host: $xhttp_host}
             }
           }
         else empty end),
@@ -3989,14 +4587,36 @@ client_singbox_json() {
           } else {} end))
         else empty end)
       ],
-      route: {
-        final: (
-          if $vless == "1" then "vless-reality"
-          elif $ss == "1" then "ss-2022"
-          else "hysteria2"
-          end
-        )
-      }
+      route: (
+        {
+          final: (
+            if $vless == "1" then "vless-reality"
+            elif $ss == "1" then "ss-2022"
+            elif $hy2 == "1" then "hysteria2"
+            else "vless-ws-keepalive"
+            end
+          )
+        }
+        + (if $xhttp == "1" and $xhttp_ws == "1" and ($vless == "1" or $ss == "1" or $hy2 == "1") then {
+          rules: [
+            {action: "sniff"},
+            {
+              domain_suffix: [
+                "openai.com",
+                "chatgpt.com",
+                "oaistatic.com",
+                "oaiusercontent.com"
+              ],
+              outbound: "vless-ws-keepalive"
+            },
+            {
+              network: "tcp",
+              port: [22],
+              outbound: "vless-ws-keepalive"
+            }
+          ]
+        } else {} end)
+      )
     }'
 }
 
@@ -4045,27 +4665,292 @@ client_hysteria2_json() {
     } else {} end)'
 }
 
+# Complete runnable Mihomo (Clash Meta >= v1.19.34) YAML configuration.
+client_mihomo_yaml() {
+  # shellcheck disable=SC2016  # jq variables, not shell ones
+  client_jq -r '
+    def q: @json;
+    def node_label($s): ($node_name + "-" + $s);
+    def has_fallback: ($xhttp == "1" and $xhttp_connect_addr != "" and $xhttp_connect_addr != $xhttp_host);
+    def proxy_names:
+      [
+        (if $vless == "1" then node_label("vless") else empty end),
+        (if $xhttp == "1" then node_label("xhttp") else empty end),
+        (if has_fallback then node_label("xhttp-fallback") else empty end),
+        (if $xhttp == "1" and $xhttp_ws == "1" then node_label("xhttp-ws") else empty end),
+        (if has_fallback and $xhttp_ws == "1" then node_label("xhttp-ws-fallback") else empty end),
+        (if $ss == "1" then node_label("ss") else empty end),
+        (if $hy2 == "1" then node_label("hy2") else empty end)
+      ];
+    def ws_names:
+      [
+        (if $xhttp == "1" and $xhttp_ws == "1" then node_label("xhttp-ws") else empty end),
+        (if has_fallback and $xhttp_ws == "1" then node_label("xhttp-ws-fallback") else empty end),
+        (if $xhttp == "1" then node_label("xhttp") else empty end),
+        (if has_fallback then node_label("xhttp-fallback") else empty end),
+        (if $vless == "1" then node_label("vless") else empty end),
+        (if $ss == "1" then node_label("ss") else empty end),
+        (if $hy2 == "1" then node_label("hy2") else empty end)
+      ];
+    def xhttp_entry($name; $srv):
+      [
+        "  - name: \($name | q)",
+        "    type: vless",
+        "    server: \($srv | q)",
+        "    port: \($xhttp_public_port)",
+        "    uuid: \($xhttp_uuid | q)",
+        "    udp: true",
+        "    tls: true",
+        "    servername: \($xhttp_host | q)",
+        "    client-fingerprint: chrome",
+        "    alpn:",
+        (($xhttp_alpn | split(","))[] | "      - \(. | q)"),
+        "    network: xhttp",
+        "    xhttp-opts:",
+        "      host: \($xhttp_host | q)",
+        "      path: \($xhttp_path | q)",
+        "      mode: \($xhttp_client_mode | q)"
+      ];
+    def ws_entry($name; $srv):
+      [
+        "  - name: \($name | q)",
+        "    type: vless",
+        "    server: \($srv | q)",
+        "    port: \($xhttp_ws_public_port)",
+        "    uuid: \($xhttp_uuid | q)",
+        "    udp: true",
+        "    tls: true",
+        "    servername: \($xhttp_host | q)",
+        "    client-fingerprint: chrome",
+        "    alpn:",
+        "      - \"http/1.1\"",
+        "    network: ws",
+        "    ws-opts:",
+        "      path: \($xhttp_ws_path | q)",
+        "      headers:",
+        "        Host: \($xhttp_host | q)"
+      ];
+    def vless_lines:
+      if $vless == "1" then
+        [
+          "  - name: \(node_label("vless") | q)",
+          "    type: vless",
+          "    server: \($server | q)",
+          "    port: \($vless_port)",
+          "    uuid: \($uuid | q)",
+          "    network: tcp",
+          "    udp: true",
+          "    tls: true",
+          "    flow: xtls-rprx-vision",
+          "    servername: \($sni | q)",
+          "    client-fingerprint: chrome",
+          "    reality-opts:",
+          "      public-key: \($public_key | q)",
+          "      short-id: \($short_id | q)"
+        ]
+      else [] end;
+    def xhttp_lines:
+      if $xhttp == "1" then
+        xhttp_entry(node_label("xhttp"); $xhttp_dial)
+        + (if has_fallback then xhttp_entry(node_label("xhttp-fallback"); $xhttp_host) else [] end)
+        + (if $xhttp_ws == "1" then
+            ws_entry(node_label("xhttp-ws"); $xhttp_dial)
+            + (if has_fallback then ws_entry(node_label("xhttp-ws-fallback"); $xhttp_host) else [] end)
+           else [] end)
+      else [] end;
+    def ss_lines:
+      if $ss == "1" then
+        [
+          "  - name: \(node_label("ss") | q)",
+          "    type: ss",
+          "    server: \($server | q)",
+          "    port: \($ss_port)",
+          "    cipher: \($ss_method | q)",
+          "    password: \($ss_password | q)",
+          "    udp: \(if $ss_network == "tcp" then "false" else "true" end)"
+        ]
+      else [] end;
+    def hy2_lines:
+      if $hy2 == "1" then
+        [
+          "  - name: \(node_label("hy2") | q)",
+          "    type: hysteria2",
+          "    server: \($server | q)"
+        ]
+        + (if $hy2_hop_ports != "" then
+            [
+              "    ports: \($hy2_hop_ports | q)",
+              "    hop-interval: \(if $hy2_hop_min == $hy2_hop_max then $hy2_hop_min else "\($hy2_hop_min)-\($hy2_hop_max)" | q end)"
+            ]
+           else
+            ["    port: \($hy2_port)"]
+           end)
+        + [
+            "    password: \($hy2_password | q)"
+          ]
+        + (if $hy2_sni != "" then ["    sni: \($hy2_sni | q)"] else [] end)
+        + (if $hy2_tls == "self-signed" then
+            [
+              "    skip-cert-verify: false",
+              "    fingerprint: \($hy2_sha256 | q)"
+            ]
+           else [] end)
+        + (if $hy2_obfs == "salamander" then
+            [
+              "    obfs: salamander",
+              "    obfs-password: \($hy2_obfs_password | q)"
+            ]
+           else [] end)
+        + [
+            "    alpn:",
+            "      - \"h3\""
+          ]
+      else [] end;
+
+    [
+      (if $xhttp == "1"
+       then "# Generated by ToastBox (Mihomo >= v1.19.34 required for XHTTP)"
+       else "# Generated by ToastBox" end),
+      "mixed-port: 1080",
+      "bind-address: 127.0.0.1",
+      "allow-lan: false",
+      "mode: rule",
+      "log-level: warning",
+      "",
+      "proxies:"
+    ]
+    + vless_lines + xhttp_lines + ss_lines + hy2_lines
+    + [
+      "",
+      "proxy-groups:",
+      "  - name: \"Proxy-Main\"",
+      "    type: select",
+      "    proxies:"
+    ]
+    + (proxy_names | map("      - \(q)"))
+    + (if $xhttp == "1" and $xhttp_ws == "1" then
+        [
+          "  - name: \"Long-Conn-KeepAlive\"",
+          "    type: select",
+          "    proxies:"
+        ] + (ws_names | map("      - \(q)"))
+       else [] end)
+    + [
+      "",
+      "rules:",
+      "  # Private / loopback / CGNAT / link-local direct rules MUST stay before DST-PORT,22",
+      "  - IP-CIDR,127.0.0.0/8,DIRECT,no-resolve",
+      "  - IP-CIDR,10.0.0.0/8,DIRECT,no-resolve",
+      "  - IP-CIDR,100.64.0.0/10,DIRECT,no-resolve",
+      "  - IP-CIDR,169.254.0.0/16,DIRECT,no-resolve",
+      "  - IP-CIDR,172.16.0.0/12,DIRECT,no-resolve",
+      "  - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve",
+      "  - IP-CIDR6,::1/128,DIRECT,no-resolve",
+      "  - IP-CIDR6,fc00::/7,DIRECT,no-resolve",
+      "  - IP-CIDR6,fe80::/10,DIRECT,no-resolve"
+    ]
+    + (if $xhttp == "1" and $xhttp_ws == "1" then
+        [
+          "  - DOMAIN-SUFFIX,openai.com,Long-Conn-KeepAlive",
+          "  - DOMAIN-SUFFIX,chatgpt.com,Long-Conn-KeepAlive",
+          "  - DOMAIN-SUFFIX,oaistatic.com,Long-Conn-KeepAlive",
+          "  - DOMAIN-SUFFIX,oaiusercontent.com,Long-Conn-KeepAlive",
+          "  - DST-PORT,22,Long-Conn-KeepAlive"
+        ]
+       else [] end)
+    + ["  - MATCH,Proxy-Main"]
+    | join("\n")'
+}
+
+nginx_xhttp_snippet() {
+  local upstream
+  [[ "$OUT_XHTTP" == "1" ]] || die err_format_requires_xhttp
+  [[ "$CFG_XHTTP_TLS" == "none" ]] || die err_format_nginx_requires_none
+  upstream="$(uri_host "$CFG_XHTTP_LISTEN")"
+  cat <<EOF
+# Embed inside: server { listen 443 ssl; http2 on; server_name $CFG_XHTTP_HOST; ... }
+# Note: On Nginx < 1.25.1 use 'listen 443 ssl http2;' and remove 'http2 on;'.
+# Do NOT change '^~' to '=' on the XHTTP location (packet-up appends /<session>/<seq>).
+
+location ^~ $CFG_XHTTP_PATH {
+    client_max_body_size 0;
+    client_body_timeout  5m;
+    grpc_read_timeout    315s;
+    grpc_send_timeout    5m;
+    grpc_set_header      Host \$host;
+    grpc_set_header      X-Real-IP \$remote_addr;
+    grpc_set_header      X-Forwarded-For \$proxy_add_x_forwarded_for;
+    grpc_pass            grpc://$upstream:$CFG_XHTTP_PORT;
+}
+
+# HTTP/1.1 fallback (if Cloudflare HTTP/2 to Origin is disabled):
+# location ^~ $CFG_XHTTP_PATH {
+#     client_max_body_size    0;
+#     proxy_http_version      1.1;
+#     proxy_set_header        Host \$host;
+#     proxy_set_header        X-Real-IP \$remote_addr;
+#     proxy_set_header        X-Forwarded-For \$proxy_add_x_forwarded_for;
+#     proxy_set_header        Connection "";
+#     proxy_buffering         off;
+#     proxy_request_buffering off;
+#     proxy_read_timeout      3600s;
+#     proxy_send_timeout      3600s;
+#     proxy_pass              http://$upstream:$CFG_XHTTP_PORT;
+# }
+EOF
+  if [[ "$CFG_XHTTP_WS" == "1" ]]; then
+    cat <<EOF
+
+# Companion VLESS + WebSocket keep-alive path (heartbeatPeriod: ${CFG_XHTTP_WS_HEARTBEAT}s)
+location = $CFG_XHTTP_WS_PATH {
+    if (\$http_upgrade !~* "^websocket\$") {
+        return 404;
+    }
+    proxy_http_version 1.1;
+    proxy_set_header   Upgrade \$http_upgrade;
+    proxy_set_header   Connection "upgrade";
+    proxy_set_header   Host \$host;
+    proxy_set_header   X-Real-IP \$remote_addr;
+    proxy_set_header   X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_pass         http://$upstream:$CFG_XHTTP_WS_PORT;
+}
+EOF
+  fi
+}
+
 # Machine-readable description: the state plus the share links. Private keys
 # are left out: no client needs them, and this output tends to get pasted into
 # issues and chats.
 show_json() {
-  local vless_uri="" ss_uri="" hy2_uri=""
+  local vless_uri="" ss_uri="" hy2_uri="" xhttp_uri="" xhttp_ws_uri=""
   [[ "$OUT_VLESS" == "1" ]] && vless_uri="$(vless_link)"
   [[ "$OUT_SS" == "1" ]] && ss_uri="$(ss_link)"
   [[ "$OUT_HY2" == "1" ]] && hy2_uri="$(hy2_link)"
-  state_json | jq --arg vless "$vless_uri" --arg ss "$ss_uri" --arg hy2 "$hy2_uri" \
+  [[ "$OUT_XHTTP" == "1" ]] && xhttp_uri="$(xhttp_link)"
+  [[ "$OUT_XHTTP" == "1" && "$CFG_XHTTP_WS" == "1" ]] && xhttp_ws_uri="$(xhttp_ws_link)"
+  state_json | jq \
+    --arg vless "$vless_uri" --arg ss "$ss_uri" --arg hy2 "$hy2_uri" \
+    --arg xhttp "$xhttp_uri" --arg xhttp_ws "$xhttp_ws_uri" \
     --arg version "$TB_VERSION" '
-    del(.firewall, .schema, .vless.private_key, .hy2.key)
+    del(.firewall, .schema, .vless.private_key, .hy2.key, .xhttp.key)
     + {toastbox_version: $version}
     + {links: ({} + (if $vless != "" then {vless: $vless} else {} end)
                   + (if $ss != "" then {ss: $ss} else {} end)
-                  + (if $hy2 != "" then {hy2: $hy2} else {} end))}'
+                  + (if $hy2 != "" then {hy2: $hy2} else {} end)
+                  + (if $xhttp != "" then {xhttp: $xhttp} else {} end)
+                  + (if $xhttp_ws != "" then {xhttp_ws: $xhttp_ws} else {} end))}'
 }
 
 show_links() {
   if [[ "$OUT_VLESS" == "1" ]]; then vless_link; fi
   if [[ "$OUT_SS" == "1" ]]; then ss_link; fi
   if [[ "$OUT_HY2" == "1" ]]; then hy2_link; fi
+  if [[ "$OUT_XHTTP" == "1" ]]; then
+    xhttp_link
+    if [[ "$CFG_XHTTP_WS" == "1" ]]; then xhttp_ws_link; fi
+  fi
 }
 
 show_qr() {
@@ -4175,6 +5060,55 @@ show_text() {
     fi
   fi
 
+  if [[ "$OUT_XHTTP" == "1" ]]; then
+    link="$(xhttp_link)"
+    printf '\n%s-- VLESS + XHTTP --%s\n' "$TB_C_BOLD" "$TB_C_RESET"
+    kv label_tls "$CFG_XHTTP_TLS"
+    if [[ "$CFG_XHTTP_TLS" == "none" ]]; then
+      kv label_backend "$(uri_host "$CFG_XHTTP_LISTEN"):$CFG_XHTTP_PORT/tcp"
+    else
+      if [[ -n "$CFG_XHTTP_LISTEN" ]]; then
+        kv label_backend "$(uri_host "$CFG_XHTTP_LISTEN"):$CFG_XHTTP_PORT/tcp"
+      else
+        kv label_port "$CFG_XHTTP_PORT/tcp"
+      fi
+      if [[ -n "$CFG_XHTTP_CERT_FILE" ]]; then
+        kv label_cert_file "$CFG_XHTTP_CERT_FILE"
+        if [[ "$CFG_XHTTP_CERTBOT_HOOK" == "1" ]]; then
+          kv label_cert_hook "certbot"
+        fi
+      fi
+    fi
+    kv label_connect_addr "$(uri_host "$(xhttp_dial_addr)"):$CFG_XHTTP_PUBLIC_PORT"
+    kv label_host "$CFG_XHTTP_HOST"
+    kv label_path "$CFG_XHTTP_PATH"
+    kv label_xhttp_mode "$CFG_XHTTP_MODE (client: $CFG_XHTTP_CLIENT_MODE)"
+    kv label_alpn "$CFG_XHTTP_ALPN"
+    kv label_uuid "$CFG_XHTTP_UUID"
+    kv label_fingerprint "chrome"
+    printf '\n  %s\n  %s\n' "$(msg label_link)" "$link"
+    if [[ "${OPT_QR:-0}" == "1" ]]; then show_qr "$link"; fi
+
+    if [[ "$CFG_XHTTP_WS" == "1" ]]; then
+      link="$(xhttp_ws_link)"
+      printf '\n%s-- VLESS + WS (Keep-Alive) --%s\n' "$TB_C_BOLD" "$TB_C_RESET"
+      if [[ "$CFG_XHTTP_TLS" == "none" || -n "$CFG_XHTTP_LISTEN" ]]; then
+        kv label_backend "$(uri_host "$CFG_XHTTP_LISTEN"):$CFG_XHTTP_WS_PORT/tcp"
+      else
+        kv label_port "$CFG_XHTTP_WS_PORT/tcp"
+      fi
+      kv label_connect_addr "$(uri_host "$(xhttp_dial_addr)"):$CFG_XHTTP_WS_PUBLIC_PORT"
+      kv label_host "$CFG_XHTTP_HOST"
+      kv label_path "$CFG_XHTTP_WS_PATH"
+      kv label_ws_heartbeat "${CFG_XHTTP_WS_HEARTBEAT}s"
+      kv label_alpn "http/1.1"
+      kv label_uuid "$CFG_XHTTP_UUID"
+      printf '\n  %s\n  %s\n' "$(msg label_link)" "$link"
+      if [[ "${OPT_QR:-0}" == "1" ]]; then show_qr "$link"; fi
+      printf '\n  %s\n' "$(msg note_xhttp_ws_keepalive)"
+    fi
+  fi
+
   if [[ "$CFG_HY2" == "1" && -n "$CFG_HY2_HOP_PORTS" ]]; then
     udp_list="$CFG_HY2_PORT,$CFG_HY2_HOP_PORTS"
     if [[ "$CFG_SS" == "1" && "$CFG_SS_NETWORK" != "tcp" ]]; then
@@ -4183,6 +5117,12 @@ show_text() {
     sg_udp="$(norm_hy2_hop_ports "$udp_list")"
   fi
   printf '\n%s\n%s\n' "$(msg note_client_configs)" "$(msg note_firewall)"
+  if [[ "$OUT_XHTTP" == "1" ]]; then
+    if [[ "$CFG_XHTTP_TLS" == "none" ]]; then
+      printf '%s\n' "$(msg note_xhttp_nginx)"
+    fi
+    printf '%s\n' "$(msg note_xhttp_mihomo_ver)"
+  fi
   if [[ "$CFG_HY2" == "1" && "$CFG_HY2_ACME" == "1" && "$CFG_HY2_CERTBOT_HOOK" == "1" ]]; then
     printf '%s\n' "$(msg note_hy2_acme_firewall "$CFG_CORE")"
   fi
@@ -4198,18 +5138,22 @@ select_output_protocols() {
   OUT_VLESS="$CFG_VLESS"
   OUT_SS="$CFG_SS"
   OUT_HY2="$CFG_HY2"
+  OUT_XHTTP="$CFG_XHTTP"
   if [[ -n "${OPT_PROTOCOLS:-}" ]]; then
-    local want_vless=0 want_ss=0 want_hy2=0
+    local want_vless=0 want_ss=0 want_hy2=0 want_xhttp=0
     parse_protocols "$OPT_PROTOCOLS" || die err_protocols "$OPT_PROTOCOLS"
     want_vless="$PARSED_VLESS"
     want_ss="$PARSED_SS"
     want_hy2="$PARSED_HY2"
+    want_xhttp="$PARSED_XHTTP"
     [[ "$want_vless" == "1" && "$CFG_VLESS" != "1" ]] && die err_protocol_disabled "vless"
     [[ "$want_ss" == "1" && "$CFG_SS" != "1" ]] && die err_protocol_disabled "ss"
     [[ "$want_hy2" == "1" && "$CFG_HY2" != "1" ]] && die err_protocol_disabled "hy2"
+    [[ "$want_xhttp" == "1" && "$CFG_XHTTP" != "1" ]] && die err_protocol_disabled "xhttp"
     OUT_VLESS="$want_vless"
     OUT_SS="$want_ss"
     OUT_HY2="$want_hy2"
+    OUT_XHTTP="$want_xhttp"
   fi
   return 0
 }
@@ -4223,6 +5167,8 @@ show_node() {
     xray) client_xray_json ;;
     sing-box) client_singbox_json ;;
     hysteria2) client_hysteria2_json ;;
+    mihomo) client_mihomo_yaml ;;
+    nginx) nginx_xhttp_snippet ;;
     *) die err_format "$OPT_FORMAT" ;;
   esac
 }
@@ -4280,6 +5226,24 @@ opt_reset() {
   OPT_HY2_ACME_AGREE_TOS=0
   OPT_HY2_HOP_PORTS=""
   OPT_HY2_HOP_INTERVAL=""
+  OPT_XHTTP_TLS=""
+  OPT_XHTTP_LISTEN=""
+  OPT_XHTTP_PORT=""
+  OPT_XHTTP_PUBLIC_PORT=""
+  OPT_XHTTP_CONNECT_ADDR=""
+  OPT_XHTTP_HOST=""
+  OPT_XHTTP_PATH=""
+  OPT_XHTTP_MODE=""
+  OPT_XHTTP_CLIENT_MODE=""
+  OPT_XHTTP_ALPN=""
+  OPT_XHTTP_CERT=""
+  OPT_XHTTP_KEY=""
+  OPT_XHTTP_CERT_HOOK=""
+  OPT_XHTTP_WS_KEEPALIVE=""
+  OPT_XHTTP_WS_PORT=""
+  OPT_XHTTP_WS_PUBLIC_PORT=""
+  OPT_XHTTP_WS_PATH=""
+  OPT_XHTTP_WS_HEARTBEAT=""
   OPT_BLOCK_BT=""
   OPT_ALLOW_PRIVATE=""
   OPT_TCP_KEEPALIVE_IDLE=""
@@ -4333,6 +5297,23 @@ parse_args() {
       --hy2-acme-email) var=OPT_HY2_ACME_EMAIL ;;
       --hy2-hop-ports) var=OPT_HY2_HOP_PORTS ;;
       --hy2-hop-interval) var=OPT_HY2_HOP_INTERVAL ;;
+      --xhttp-tls) var=OPT_XHTTP_TLS ;;
+      --xhttp-listen) var=OPT_XHTTP_LISTEN ;;
+      --xhttp-port) var=OPT_XHTTP_PORT ;;
+      --xhttp-public-port) var=OPT_XHTTP_PUBLIC_PORT ;;
+      --xhttp-connect-addr) var=OPT_XHTTP_CONNECT_ADDR ;;
+      --xhttp-host) var=OPT_XHTTP_HOST ;;
+      --xhttp-path) var=OPT_XHTTP_PATH ;;
+      --xhttp-mode) var=OPT_XHTTP_MODE ;;
+      --xhttp-client-mode) var=OPT_XHTTP_CLIENT_MODE ;;
+      --xhttp-alpn) var=OPT_XHTTP_ALPN ;;
+      --xhttp-cert) var=OPT_XHTTP_CERT ;;
+      --xhttp-key) var=OPT_XHTTP_KEY ;;
+      --xhttp-cert-hook) var=OPT_XHTTP_CERT_HOOK ;;
+      --xhttp-ws-port) var=OPT_XHTTP_WS_PORT ;;
+      --xhttp-ws-public-port) var=OPT_XHTTP_WS_PUBLIC_PORT ;;
+      --xhttp-ws-path) var=OPT_XHTTP_WS_PATH ;;
+      --xhttp-ws-heartbeat) var=OPT_XHTTP_WS_HEARTBEAT ;;
       --tcp-keepalive-idle) var=OPT_TCP_KEEPALIVE_IDLE ;;
       --tcp-keepalive-interval) var=OPT_TCP_KEEPALIVE_INTERVAL ;;
       --tcp-user-timeout) var=OPT_TCP_USER_TIMEOUT ;;
@@ -4343,7 +5324,12 @@ parse_args() {
     esac
     if [[ -n "$var" ]]; then
       (($# > 0)) || die err_missing_value "$arg"
-      if [[ -z "$1" ]] && [[ "$var" == OPT_TCP_* || "$var" == OPT_HY2_* ]]; then
+      if [[ "$var" == "OPT_XHTTP_CONNECT_ADDR" && -z "$1" ]]; then
+        OPT_XHTTP_CONNECT_ADDR="none"
+        shift
+        continue
+      fi
+      if [[ -z "$1" ]] && [[ "$var" == OPT_TCP_* || "$var" == OPT_HY2_* || "$var" == OPT_XHTTP_* ]]; then
         die err_invalid_option "$arg" "$1"
       fi
       printf -v "$var" '%s' "$1"
@@ -4362,6 +5348,8 @@ parse_args() {
       --skip-target-check) OPT_SKIP_TARGET_CHECK=1 ;;
       --hy2-renew-cert) OPT_HY2_RENEW_CERT=1 ;;
       --hy2-acme-agree-tos) OPT_HY2_ACME_AGREE_TOS=1 ;;
+      --xhttp-ws-keepalive) OPT_XHTTP_WS_KEEPALIVE=1 ;;
+      --no-xhttp-ws-keepalive) OPT_XHTTP_WS_KEEPALIVE=0 ;;
       --block-bt) OPT_BLOCK_BT=1 ;;
       --no-block-bt) OPT_BLOCK_BT=0 ;;
       --allow-private) OPT_ALLOW_PRIVATE=1 ;;
@@ -4392,14 +5380,16 @@ norm_core() {
 PARSED_VLESS=0
 PARSED_SS=0
 PARSED_HY2=0
+PARSED_XHTTP=0
 
-# parse_protocols "vless,ss,hy2": result in PARSED_VLESS / PARSED_SS / PARSED_HY2.
+# parse_protocols "vless,ss,hy2,xhttp": result in PARSED_*.
 parse_protocols() {
   local item
   local -a items=()
   PARSED_VLESS=0
   PARSED_SS=0
   PARSED_HY2=0
+  PARSED_XHTTP=0
   IFS=',+ ' read -r -a items <<<"$1"
   ((${#items[@]} > 0)) || return 1
   for item in "${items[@]}"; do
@@ -4409,6 +5399,7 @@ parse_protocols() {
       3 | ss | ss2022 | shadowsocks | shadowsocks-2022) PARSED_SS=1 ;;
       4 | hy2 | hysteria2 | hysteria) PARSED_HY2=1 ;;
       5 | all) PARSED_VLESS=1 PARSED_SS=1 PARSED_HY2=1 ;;
+      6 | xhttp | vless-xhttp) PARSED_XHTTP=1 ;;
       *) return 1 ;;
     esac
   done
@@ -4420,6 +5411,7 @@ norm_protocols() {
   [[ "$PARSED_VLESS" == "1" ]] && protos+=(vless)
   [[ "$PARSED_SS" == "1" ]] && protos+=(ss)
   [[ "$PARSED_HY2" == "1" ]] && protos+=(hy2)
+  [[ "$PARSED_XHTTP" == "1" ]] && protos+=(xhttp)
   join_by , "${protos[@]}"
 }
 
@@ -4447,7 +5439,13 @@ norm_host() {
   local host="$1"
   host="${host#[}"
   host="${host%]}"
-  valid_host "$host" && printf '%s' "$host"
+  if valid_domain "$host"; then
+    printf '%s' "${host,,}"
+  elif valid_ipv4 "$host" || valid_ipv6 "$host"; then
+    printf '%s' "$host"
+  else
+    return 1
+  fi
 }
 
 norm_host_port() {
@@ -4480,9 +5478,57 @@ norm_ss_network() {
 
 norm_format() {
   case "$1" in
-    text | json | links | xray) printf '%s' "$1" ;;
+    text | json | links | xray | mihomo | nginx) printf '%s' "$1" ;;
     sing-box | singbox) printf 'sing-box' ;;
     hysteria2 | hy2) printf 'hysteria2' ;;
+    clash | clash-meta) printf 'mihomo' ;;
+    *) return 1 ;;
+  esac
+}
+
+norm_xhttp_tls() {
+  case "$1" in
+    1 | none | off) printf 'none' ;;
+    2 | files | file | import) printf 'files' ;;
+    *) return 1 ;;
+  esac
+}
+
+norm_xhttp_path() {
+  local p="$1"
+  [[ -n "$p" ]] || return 1
+  [[ "$p" == /* ]] || p="/$p"
+  while [[ "$p" == */ && "$p" != "/" ]]; do
+    p="${p%/}"
+  done
+  valid_xhttp_path "$p" && printf '%s' "$p"
+}
+
+norm_xhttp_connect_addr() {
+  case "$1" in
+    none | off) printf 'none' ;;
+    *) norm_host "$1" ;;
+  esac
+}
+
+norm_xhttp_mode() {
+  in_list "$1" "${TB_XHTTP_MODES[@]}" && printf '%s' "$1"
+}
+
+norm_xhttp_alpn() {
+  in_list "$1" "${TB_XHTTP_ALPNS[@]}" && printf '%s' "$1"
+}
+
+norm_xhttp_ws_heartbeat() {
+  local v
+  v="$(norm_socket_int "$1" 3600)" || return 1
+  ((v >= 1)) && printf '%d' "$v"
+}
+
+norm_yes_no() {
+  case "${1,,}" in
+    y | yes | 1 | true) printf '1' ;;
+    n | no | 0 | false) printf '0' ;;
     *) return 1 ;;
   esac
 }
@@ -4612,6 +5658,36 @@ validate_options() {
   if [[ "$OPT_HY2_HOP_PORTS" == "none" && -n "$OPT_HY2_HOP_INTERVAL" ]]; then
     die err_hy2_hop_interval_requires_ports
   fi
+  normalize_opt OPT_XHTTP_TLS norm_xhttp_tls --xhttp-tls
+  normalize_opt OPT_XHTTP_LISTEN norm_listen --xhttp-listen
+  normalize_opt OPT_XHTTP_PORT norm_port --xhttp-port
+  normalize_opt OPT_XHTTP_PUBLIC_PORT norm_port --xhttp-public-port
+  normalize_opt OPT_XHTTP_CONNECT_ADDR norm_xhttp_connect_addr --xhttp-connect-addr
+  normalize_opt OPT_XHTTP_HOST norm_domain --xhttp-host
+  normalize_opt OPT_XHTTP_PATH norm_xhttp_path --xhttp-path
+  normalize_opt OPT_XHTTP_MODE norm_xhttp_mode --xhttp-mode
+  normalize_opt OPT_XHTTP_CLIENT_MODE norm_xhttp_mode --xhttp-client-mode
+  normalize_opt OPT_XHTTP_ALPN norm_xhttp_alpn --xhttp-alpn
+  normalize_opt OPT_XHTTP_CERT_HOOK norm_hy2_cert_hook --xhttp-cert-hook
+  normalize_opt OPT_XHTTP_WS_PORT norm_port --xhttp-ws-port
+  normalize_opt OPT_XHTTP_WS_PUBLIC_PORT norm_port --xhttp-ws-public-port
+  normalize_opt OPT_XHTTP_WS_PATH norm_xhttp_path --xhttp-ws-path
+  normalize_opt OPT_XHTTP_WS_HEARTBEAT norm_xhttp_ws_heartbeat --xhttp-ws-heartbeat
+  if [[ -n "$OPT_XHTTP_TLS$OPT_XHTTP_LISTEN$OPT_XHTTP_PORT$OPT_XHTTP_PUBLIC_PORT$OPT_XHTTP_CONNECT_ADDR$OPT_XHTTP_HOST$OPT_XHTTP_PATH$OPT_XHTTP_MODE$OPT_XHTTP_CLIENT_MODE$OPT_XHTTP_ALPN$OPT_XHTTP_CERT$OPT_XHTTP_KEY$OPT_XHTTP_CERT_HOOK$OPT_XHTTP_WS_KEEPALIVE$OPT_XHTTP_WS_PORT$OPT_XHTTP_WS_PUBLIC_PORT$OPT_XHTTP_WS_PATH$OPT_XHTTP_WS_HEARTBEAT" ]]; then
+    [[ "$OPT_COMMAND" == "install" ]] || die err_xhttp_command
+  fi
+  if [[ "$OPT_XHTTP_TLS" == "none" && -n "$OPT_XHTTP_CERT$OPT_XHTTP_KEY" ]]; then
+    die err_xhttp_cert_with_none
+  fi
+  if [[ "$OPT_XHTTP_CERT_HOOK" == "certbot" && "$OPT_XHTTP_TLS" == "none" ]]; then
+    die err_xhttp_hook_not_none
+  fi
+  if [[ -n "$OPT_XHTTP_CERT" && -z "$OPT_XHTTP_KEY" ]] || [[ -z "$OPT_XHTTP_CERT" && -n "$OPT_XHTTP_KEY" ]]; then
+    die err_xhttp_cert_pair_required
+  fi
+  if [[ "$OPT_XHTTP_TLS" == "none" && -n "$OPT_XHTTP_LISTEN" ]] && ! hy2_hop_is_loopback "$OPT_XHTTP_LISTEN"; then
+    die err_xhttp_none_loopback "$OPT_XHTTP_LISTEN"
+  fi
   normalize_opt OPT_TCP_KEEPALIVE_IDLE norm_tcp_keepalive --tcp-keepalive-idle
   normalize_opt OPT_TCP_KEEPALIVE_INTERVAL norm_tcp_keepalive --tcp-keepalive-interval
   normalize_opt OPT_TCP_USER_TIMEOUT norm_tcp_user_timeout --tcp-user-timeout
@@ -4621,7 +5697,7 @@ validate_options() {
   normalize_opt OPT_CORE_VERSION norm_version --core-version
   normalize_opt OPT_FORMAT norm_format --format
   if [[ "$OPT_COMMAND" == "refresh-cert" ]]; then
-    if [[ -n "$OPT_CORE$OPT_PROTOCOLS$OPT_SERVER_ADDR$OPT_NAME$OPT_LISTEN$OPT_VLESS_PORT$OPT_REALITY_SNI$OPT_REALITY_TARGET$OPT_SS_PORT$OPT_SS_METHOD$OPT_SS_NETWORK$OPT_BLOCK_BT$OPT_ALLOW_PRIVATE$OPT_CORE_VERSION$OPT_FORMAT" ||
+    if [[ -n "$OPT_CORE$OPT_PROTOCOLS$OPT_SERVER_ADDR$OPT_NAME$OPT_LISTEN$OPT_VLESS_PORT$OPT_REALITY_SNI$OPT_REALITY_TARGET$OPT_SS_PORT$OPT_SS_METHOD$OPT_SS_NETWORK$OPT_XHTTP_TLS$OPT_XHTTP_LISTEN$OPT_XHTTP_PORT$OPT_XHTTP_PUBLIC_PORT$OPT_XHTTP_CONNECT_ADDR$OPT_XHTTP_HOST$OPT_XHTTP_PATH$OPT_XHTTP_MODE$OPT_XHTTP_CLIENT_MODE$OPT_XHTTP_ALPN$OPT_XHTTP_CERT$OPT_XHTTP_KEY$OPT_XHTTP_CERT_HOOK$OPT_XHTTP_WS_KEEPALIVE$OPT_XHTTP_WS_PORT$OPT_XHTTP_WS_PUBLIC_PORT$OPT_XHTTP_WS_PATH$OPT_XHTTP_WS_HEARTBEAT$OPT_BLOCK_BT$OPT_ALLOW_PRIVATE$OPT_CORE_VERSION$OPT_FORMAT" ||
       "$OPT_SKIP_TARGET_CHECK" == "1" || "$OPT_NO_FIREWALL" == "1" ||
       "$OPT_OVERWRITE_CONFIG" == "1" || "$OPT_QR" == "1" || "$OPT_PURGE" == "1" ]]; then
       die err_refresh_options
@@ -4667,6 +5743,7 @@ resolve_protocols() {
     [[ "$CFG_VLESS" == "1" ]] && active+=(vless)
     [[ "$CFG_SS" == "1" ]] && active+=(ss)
     [[ "$CFG_HY2" == "1" ]] && active+=(hy2)
+    [[ "$CFG_XHTTP" == "1" ]] && active+=(xhttp)
     ((${#active[@]} > 0)) && current="$(join_by , "${active[@]}")"
   fi
   if [[ -n "$OPT_PROTOCOLS" ]]; then
@@ -4678,6 +5755,7 @@ resolve_protocols() {
   CFG_VLESS="$PARSED_VLESS"
   CFG_SS="$PARSED_SS"
   CFG_HY2="$PARSED_HY2"
+  CFG_XHTTP="$PARSED_XHTTP"
 }
 
 resolve_server_addr() {
@@ -5028,17 +6106,253 @@ resolve_sockopt() {
   check_sockopt_support "$CFG_CORE"
 }
 
+xhttp_ws_port_node_conflict() {
+  local p="$1"
+  [[ "$p" == "$CFG_XHTTP_PORT" ]] && return 0
+  [[ "$CFG_VLESS" == "1" && "$p" == "$CFG_VLESS_PORT" ]] && return 0
+  [[ "$CFG_SS" == "1" && "$CFG_SS_NETWORK" != "udp" && "$p" == "$CFG_SS_PORT" ]] && return 0
+  return 1
+}
+
+resolve_xhttp() {
+  local prev_tls="$CFG_XHTTP_TLS" prev_ws="$CFG_XHTTP_WS"
+  local old_port="$CFG_XHTTP_PORT" old_public_port="$CFG_XHTTP_PUBLIC_PORT"
+  local old_ws_port="$CFG_XHTTP_WS_PORT" default_host="$CFG_XHTTP_HOST" default_port=""
+  local cert_file="" key_file="" abs_cert="" abs_key="" default_ws_port="" ca_ans="" ws_def="no"
+
+  check_xhttp_core_support "$CFG_CORE"
+
+  if [[ -n "$OPT_XHTTP_TLS" ]]; then
+    CFG_XHTTP_TLS="$OPT_XHTTP_TLS"
+  elif [[ -n "$OPT_XHTTP_CERT" ]]; then
+    CFG_XHTTP_TLS="files"
+  else
+    ask_valid CFG_XHTTP_TLS "${CFG_XHTTP_TLS:-none}" norm_xhttp_tls prompt_xhttp_tls
+  fi
+
+  if [[ -z "$default_host" ]] && valid_domain "$CFG_SERVER_ADDR"; then
+    default_host="$CFG_SERVER_ADDR"
+  fi
+  if [[ -n "$OPT_XHTTP_HOST" ]]; then
+    CFG_XHTTP_HOST="$OPT_XHTTP_HOST"
+  elif [[ "$TB_INTERACTIVE" == "1" ]]; then
+    ask_valid CFG_XHTTP_HOST "$default_host" norm_domain prompt_xhttp_host
+  elif [[ -n "$default_host" ]]; then
+    CFG_XHTTP_HOST="$default_host"
+  else
+    die err_xhttp_host_required
+  fi
+
+  if [[ "$CFG_XHTTP_TLS" == "none" ]]; then
+    if [[ -n "$OPT_XHTTP_LISTEN" ]]; then
+      hy2_hop_is_loopback "$OPT_XHTTP_LISTEN" || die err_xhttp_none_loopback "$OPT_XHTTP_LISTEN"
+      CFG_XHTTP_LISTEN="$OPT_XHTTP_LISTEN"
+    elif [[ "$prev_tls" != "none" ]] || ! hy2_hop_is_loopback "$CFG_XHTTP_LISTEN"; then
+      CFG_XHTTP_LISTEN="127.0.0.1"
+    fi
+
+    default_port="$CFG_XHTTP_PORT"
+    if [[ "$prev_tls" != "none" || -z "$default_port" ]]; then
+      default_port="$TB_XHTTP_DEFAULT_PORT"
+    fi
+    if [[ -n "$OPT_XHTTP_PORT" ]]; then
+      CFG_XHTTP_PORT="$OPT_XHTTP_PORT"
+    else
+      ask_valid CFG_XHTTP_PORT "$default_port" norm_port prompt_xhttp_port
+    fi
+
+    if [[ -n "$OPT_XHTTP_PUBLIC_PORT" ]]; then
+      CFG_XHTTP_PUBLIC_PORT="$OPT_XHTTP_PUBLIC_PORT"
+    elif [[ "$prev_tls" != "none" || -z "$CFG_XHTTP_PUBLIC_PORT" ]]; then
+      CFG_XHTTP_PUBLIC_PORT="$TB_XHTTP_DEFAULT_PUBLIC_PORT"
+    fi
+  else
+    if [[ -n "$OPT_XHTTP_LISTEN" ]]; then
+      CFG_XHTTP_LISTEN="$OPT_XHTTP_LISTEN"
+    elif [[ "$prev_tls" == "none" ]] && hy2_hop_is_loopback "$CFG_XHTTP_LISTEN"; then
+      CFG_XHTTP_LISTEN=""
+    fi
+
+    default_port="$CFG_XHTTP_PORT"
+    if [[ "$prev_tls" != "files" || -z "$default_port" ]]; then
+      default_port="$TB_XHTTP_DEFAULT_PUBLIC_PORT"
+    fi
+    if [[ -n "$OPT_XHTTP_PORT" ]]; then
+      CFG_XHTTP_PORT="$OPT_XHTTP_PORT"
+    else
+      ask_valid CFG_XHTTP_PORT "$default_port" norm_port prompt_xhttp_port
+    fi
+
+    if [[ -n "$OPT_XHTTP_PUBLIC_PORT" ]]; then
+      CFG_XHTTP_PUBLIC_PORT="$OPT_XHTTP_PUBLIC_PORT"
+    elif [[ "$prev_tls" != "files" || -z "$CFG_XHTTP_PUBLIC_PORT" ]] ||
+      { [[ -n "$OPT_XHTTP_PORT" && "$CFG_XHTTP_PUBLIC_PORT" == "$old_port" ]]; }; then
+      CFG_XHTTP_PUBLIC_PORT="$CFG_XHTTP_PORT"
+    fi
+  fi
+
+  if [[ "$OPT_XHTTP_CONNECT_ADDR" == "none" ]]; then
+    CFG_XHTTP_CONNECT_ADDR=""
+  elif [[ -n "$OPT_XHTTP_CONNECT_ADDR" ]]; then
+    CFG_XHTTP_CONNECT_ADDR="$OPT_XHTTP_CONNECT_ADDR"
+  elif [[ "$TB_INTERACTIVE" == "1" ]]; then
+    ask_valid ca_ans "${CFG_XHTTP_CONNECT_ADDR:-none}" norm_xhttp_connect_addr prompt_xhttp_connect_addr
+    if [[ "$ca_ans" == "none" ]]; then
+      CFG_XHTTP_CONNECT_ADDR=""
+    else
+      CFG_XHTTP_CONNECT_ADDR="$ca_ans"
+    fi
+  fi
+  [[ "$CFG_XHTTP_CONNECT_ADDR" == "$CFG_XHTTP_HOST" ]] && CFG_XHTTP_CONNECT_ADDR=""
+
+  [[ -n "$OPT_XHTTP_PATH" ]] && CFG_XHTTP_PATH="$OPT_XHTTP_PATH"
+  CFG_XHTTP_MODE="${OPT_XHTTP_MODE:-${CFG_XHTTP_MODE:-auto}}"
+  CFG_XHTTP_CLIENT_MODE="${OPT_XHTTP_CLIENT_MODE:-${CFG_XHTTP_CLIENT_MODE:-packet-up}}"
+  CFG_XHTTP_ALPN="${OPT_XHTTP_ALPN:-${CFG_XHTTP_ALPN:-h2}}"
+  if [[ "$CFG_XHTTP_ALPN" == "h3" ]]; then
+    log_warn warn_xhttp_alpn_h3
+  fi
+
+  if [[ "$CFG_XHTTP_TLS" == "files" ]]; then
+    if [[ -n "$OPT_XHTTP_CERT" ]]; then
+      cert_file="$OPT_XHTTP_CERT"
+      key_file="$OPT_XHTTP_KEY"
+    elif [[ "$prev_tls" != "files" || -z "$CFG_XHTTP_CERT" || -z "$CFG_XHTTP_KEY" ]]; then
+      if [[ "$TB_INTERACTIVE" == "1" ]]; then
+        ask_valid cert_file "" norm_readable_file prompt_xhttp_cert
+        ask_valid key_file "" norm_readable_file prompt_xhttp_key
+      else
+        die err_xhttp_files_required
+      fi
+    fi
+
+    if [[ -n "$cert_file" ]]; then
+      tls_validate_pair_files "$cert_file" "$key_file" || die err_xhttp_cert_pair "$cert_file" "$key_file"
+      abs_cert="$(tls_abs_path "$cert_file")" || die err_xhttp_cert_pair "$cert_file" "$key_file"
+      abs_key="$(tls_abs_path "$key_file")" || die err_xhttp_cert_pair "$cert_file" "$key_file"
+      tls_cert_matches_name "$cert_file" "$CFG_XHTTP_HOST" || die err_xhttp_cert_host_mismatch "$CFG_XHTTP_HOST"
+      CFG_XHTTP_CERT="$TLS_CERT_PEM"
+      CFG_XHTTP_KEY="$TLS_KEY_PEM"
+      CFG_XHTTP_CERT_SHA256="$TLS_CERT_SHA256"
+      CFG_XHTTP_CERT_FILE="$abs_cert"
+      CFG_XHTTP_KEY_FILE="$abs_key"
+    else
+      tls_validate_pem_pair "$CFG_XHTTP_CERT" "$CFG_XHTTP_KEY" || die err_xhttp_tls_invalid
+      CFG_XHTTP_CERT_SHA256="$TLS_CERT_SHA256"
+      tls_pem_matches_name "$CFG_XHTTP_CERT" "$CFG_XHTTP_HOST" || die err_xhttp_cert_host_mismatch "$CFG_XHTTP_HOST"
+    fi
+
+    case "$OPT_XHTTP_CERT_HOOK" in
+      certbot) CFG_XHTTP_CERTBOT_HOOK=1 ;;
+      none) CFG_XHTTP_CERTBOT_HOOK=0 ;;
+    esac
+    if [[ "$CFG_XHTTP_CERTBOT_HOOK" == "1" ]]; then
+      if [[ -z "$CFG_XHTTP_CERT_FILE" || -z "$CFG_XHTTP_KEY_FILE" ]]; then
+        die err_xhttp_cert_sources_missing
+      fi
+      certbot_lineage_from_pair "$CFG_XHTTP_CERT_FILE" "$CFG_XHTTP_KEY_FILE" >/dev/null ||
+        die err_hy2_hook_certbot_paths "$(certbot_live_root)"
+    fi
+  else
+    if [[ "$OPT_XHTTP_CERT_HOOK" == "certbot" ]]; then
+      die err_xhttp_hook_not_none
+    fi
+    CFG_XHTTP_CERT=""
+    CFG_XHTTP_KEY=""
+    CFG_XHTTP_CERT_SHA256=""
+    CFG_XHTTP_CERT_FILE=""
+    CFG_XHTTP_KEY_FILE=""
+    CFG_XHTTP_CERTBOT_HOOK=0
+  fi
+
+  if [[ -n "$OPT_XHTTP_WS_KEEPALIVE" ]]; then
+    CFG_XHTTP_WS="$OPT_XHTTP_WS_KEEPALIVE"
+  elif [[ "$TB_INTERACTIVE" == "1" ]]; then
+    [[ "$CFG_XHTTP_WS" == "1" ]] && ws_def="yes"
+    ask_valid CFG_XHTTP_WS "$ws_def" norm_yes_no prompt_xhttp_ws_keepalive
+  fi
+
+  if [[ "$CFG_XHTTP_WS" != "1" ]]; then
+    if [[ -n "$OPT_XHTTP_WS_PORT$OPT_XHTTP_WS_PUBLIC_PORT$OPT_XHTTP_WS_PATH$OPT_XHTTP_WS_HEARTBEAT" ]]; then
+      die err_xhttp_ws_not_enabled
+    fi
+    CFG_XHTTP_WS_PORT=""
+    CFG_XHTTP_WS_PUBLIC_PORT=""
+    CFG_XHTTP_WS_PATH=""
+    CFG_XHTTP_WS_HEARTBEAT="$TB_XHTTP_DEFAULT_WS_HEARTBEAT"
+    return 0
+  fi
+
+  if [[ "$CFG_XHTTP_TLS" == "none" ]]; then
+    if [[ -n "$OPT_XHTTP_WS_PORT" ]]; then
+      CFG_XHTTP_WS_PORT="$OPT_XHTTP_WS_PORT"
+    elif [[ "$prev_tls" != "none" || "$prev_ws" != "1" || -z "$CFG_XHTTP_WS_PORT" ]] ||
+      [[ "$CFG_XHTTP_WS_PORT" == "$TB_XHTTP_DEFAULT_WS_PORT" && "$CFG_XHTTP_WS_PORT" == "$CFG_XHTTP_PORT" ]]; then
+      default_ws_port="$TB_XHTTP_DEFAULT_WS_PORT"
+      if [[ "$default_ws_port" == "$CFG_XHTTP_PORT" ]]; then
+        default_ws_port=$((CFG_XHTTP_PORT + 1))
+        log_warn warn_xhttp_ws_port_conflict "$TB_XHTTP_DEFAULT_WS_PORT" "$default_ws_port"
+      fi
+      CFG_XHTTP_WS_PORT="$default_ws_port"
+    fi
+    if [[ -n "$OPT_XHTTP_WS_PUBLIC_PORT" ]]; then
+      CFG_XHTTP_WS_PUBLIC_PORT="$OPT_XHTTP_WS_PUBLIC_PORT"
+    elif [[ "$prev_tls" != "none" || "$prev_ws" != "1" || -z "$CFG_XHTTP_WS_PUBLIC_PORT" ]] ||
+      { [[ -n "$OPT_XHTTP_PUBLIC_PORT" && "$CFG_XHTTP_WS_PUBLIC_PORT" == "$old_public_port" ]]; }; then
+      CFG_XHTTP_WS_PUBLIC_PORT="$CFG_XHTTP_PUBLIC_PORT"
+    fi
+  else
+    if [[ -n "$OPT_XHTTP_WS_PORT" ]]; then
+      CFG_XHTTP_WS_PORT="$OPT_XHTTP_WS_PORT"
+    elif [[ "$prev_tls" != "files" || "$prev_ws" != "1" || -z "$CFG_XHTTP_WS_PORT" ]] ||
+      { [[ "$CFG_XHTTP_WS_PORT" == "$TB_XHTTP_DEFAULT_WS_FILES_PORT" ]] && xhttp_ws_port_node_conflict "$CFG_XHTTP_WS_PORT"; }; then
+      default_ws_port="$TB_XHTTP_DEFAULT_WS_FILES_PORT"
+      if xhttp_ws_port_node_conflict "$default_ws_port"; then
+        default_ws_port=2053
+        log_warn warn_xhttp_ws_port_conflict "$TB_XHTTP_DEFAULT_WS_FILES_PORT" "$default_ws_port"
+      elif port_conflict tcp "$default_ws_port" "$(core_call process)" >/dev/null 2>&1; then
+        default_ws_port=2053
+        log_warn warn_xhttp_ws_port_busy "$TB_XHTTP_DEFAULT_WS_FILES_PORT" "$default_ws_port"
+      fi
+      CFG_XHTTP_WS_PORT="$default_ws_port"
+    fi
+    if [[ -n "$OPT_XHTTP_WS_PUBLIC_PORT" ]]; then
+      CFG_XHTTP_WS_PUBLIC_PORT="$OPT_XHTTP_WS_PUBLIC_PORT"
+    elif [[ "$prev_tls" != "files" || "$prev_ws" != "1" || -z "$CFG_XHTTP_WS_PUBLIC_PORT" ]] ||
+      { [[ "$CFG_XHTTP_WS_PORT" != "$old_ws_port" && "$CFG_XHTTP_WS_PUBLIC_PORT" == "$old_ws_port" ]]; }; then
+      CFG_XHTTP_WS_PUBLIC_PORT="$CFG_XHTTP_WS_PORT"
+    fi
+  fi
+
+  [[ -n "$OPT_XHTTP_WS_PATH" ]] && CFG_XHTTP_WS_PATH="$OPT_XHTTP_WS_PATH"
+  if [[ -n "$CFG_XHTTP_PATH" && -n "$CFG_XHTTP_WS_PATH" ]] &&
+    xhttp_paths_conflict "$CFG_XHTTP_PATH" "$CFG_XHTTP_WS_PATH"; then
+    die err_xhttp_path_conflict "$CFG_XHTTP_PATH" "$CFG_XHTTP_WS_PATH"
+  fi
+  CFG_XHTTP_WS_HEARTBEAT="${OPT_XHTTP_WS_HEARTBEAT:-${CFG_XHTTP_WS_HEARTBEAT:-$TB_XHTTP_DEFAULT_WS_HEARTBEAT}}"
+  if ((10#$CFG_XHTTP_WS_HEARTBEAT > 60)); then
+    log_warn warn_xhttp_ws_heartbeat_cf "$CFG_XHTTP_WS_HEARTBEAT"
+  fi
+}
+
 resolve_params() {
+  local -a tcp_ports=() seen_ports=()
+  local p
   resolve_core
   resolve_sockopt
   resolve_protocols
-  resolve_server_addr
 
   [[ -n "$OPT_NAME" ]] && CFG_NODE_NAME="$OPT_NAME"
   [[ -n "$CFG_NODE_NAME" ]] || CFG_NODE_NAME="ToastBox"
   [[ -n "$OPT_LISTEN" ]] && CFG_LISTEN="$OPT_LISTEN"
   [[ -n "$OPT_BLOCK_BT" ]] && CFG_BLOCK_BT="$OPT_BLOCK_BT"
   [[ -n "$OPT_ALLOW_PRIVATE" ]] && CFG_ALLOW_PRIVATE="$OPT_ALLOW_PRIVATE"
+
+  if [[ "$CFG_VLESS" == "1" || "$CFG_SS" == "1" || "$CFG_HY2" == "1" ]]; then
+    resolve_server_addr
+  elif [[ -n "$OPT_SERVER_ADDR" ]]; then
+    CFG_SERVER_ADDR="$OPT_SERVER_ADDR"
+  fi
 
   if [[ "$CFG_VLESS" == "1" ]]; then resolve_vless; fi
   if [[ "$CFG_HY2" == "1" ]]; then
@@ -5060,11 +6374,42 @@ resolve_params() {
     CFG_HY2_HOP_INTERVAL_MAX=30
   fi
   if [[ "$CFG_SS" == "1" ]]; then resolve_ss; fi
-
-  if [[ "$CFG_VLESS" == "1" && "$CFG_SS" == "1" &&
-    "$CFG_VLESS_PORT" == "$CFG_SS_PORT" && "$CFG_SS_NETWORK" != "udp" ]]; then
-    die err_port_same "$CFG_VLESS_PORT"
+  if [[ "$CFG_XHTTP" == "1" ]]; then
+    resolve_xhttp
+    if [[ -z "$CFG_SERVER_ADDR" ]] ||
+      [[ "$CFG_VLESS$CFG_SS$CFG_HY2" == "000" && -z "$OPT_SERVER_ADDR" ]]; then
+      CFG_SERVER_ADDR="$CFG_XHTTP_HOST"
+    fi
+  else
+    if [[ -n "$OPT_XHTTP_TLS$OPT_XHTTP_LISTEN$OPT_XHTTP_PORT$OPT_XHTTP_PUBLIC_PORT$OPT_XHTTP_CONNECT_ADDR$OPT_XHTTP_HOST$OPT_XHTTP_PATH$OPT_XHTTP_MODE$OPT_XHTTP_CLIENT_MODE$OPT_XHTTP_ALPN$OPT_XHTTP_CERT$OPT_XHTTP_KEY$OPT_XHTTP_CERT_HOOK$OPT_XHTTP_WS_KEEPALIVE$OPT_XHTTP_WS_PORT$OPT_XHTTP_WS_PUBLIC_PORT$OPT_XHTTP_WS_PATH$OPT_XHTTP_WS_HEARTBEAT" ]]; then
+      die err_xhttp_not_enabled
+    fi
+    CFG_XHTTP_CERT=""
+    CFG_XHTTP_KEY=""
+    CFG_XHTTP_CERT_SHA256=""
+    CFG_XHTTP_CERT_FILE=""
+    CFG_XHTTP_KEY_FILE=""
+    CFG_XHTTP_CERTBOT_HOOK=0
+    CFG_XHTTP_WS=0
+    CFG_XHTTP_WS_PORT=""
+    CFG_XHTTP_WS_PUBLIC_PORT=""
+    CFG_XHTTP_WS_PATH=""
+    CFG_XHTTP_WS_HEARTBEAT="$TB_XHTTP_DEFAULT_WS_HEARTBEAT"
   fi
+
+  [[ "$CFG_VLESS" == "1" ]] && tcp_ports+=("$CFG_VLESS_PORT")
+  [[ "$CFG_SS" == "1" && "$CFG_SS_NETWORK" != "udp" ]] && tcp_ports+=("$CFG_SS_PORT")
+  if [[ "$CFG_XHTTP" == "1" ]]; then
+    tcp_ports+=("$CFG_XHTTP_PORT")
+    [[ "$CFG_XHTTP_WS" == "1" ]] && tcp_ports+=("$CFG_XHTTP_WS_PORT")
+  fi
+  for p in "${tcp_ports[@]}"; do
+    if in_list "$p" "${seen_ports[@]}"; then
+      die err_port_same "$p"
+    fi
+    seen_ports+=("$p")
+  done
+
   if [[ "$CFG_HY2" == "1" && "$CFG_SS" == "1" &&
     "$CFG_HY2_PORT" == "$CFG_SS_PORT" && "$CFG_SS_NETWORK" != "tcp" ]]; then
     die err_port_same_udp "$CFG_HY2_PORT"
@@ -5075,8 +6420,7 @@ resolve_params() {
     die err_hy2_hop_ss_conflict "$CFG_SS_PORT" "$CFG_HY2_HOP_PORTS"
   fi
   if [[ "$CFG_HY2" == "1" && ("$TB_HY2_ACME_NEED_ISSUE" == "1" || ("$CFG_HY2_ACME" == "1" && "$CFG_HY2_CERTBOT_HOOK" == "1")) ]]; then
-    if [[ "$CFG_VLESS" == "1" && "$CFG_VLESS_PORT" == "80" ]] ||
-      { [[ "$CFG_SS" == "1" && "$CFG_SS_PORT" == "80" && "$CFG_SS_NETWORK" != "udp" ]]; }; then
+    if in_list "80" "${tcp_ports[@]}"; then
       die err_hy2_acme_port80_conflict
     fi
   fi
@@ -5126,6 +6470,20 @@ print_plan() {
       fi
     fi
   fi
+  if [[ "$CFG_XHTTP" == "1" ]]; then
+    printf '  VLESS-XHTTP: TLS %s, %s:%s/tcp -> %s:%s, host %s, mode %s/%s, alpn %s\n' \
+      "$CFG_XHTTP_TLS" "${CFG_XHTTP_LISTEN:-*}" "$CFG_XHTTP_PORT" \
+      "$(uri_host "$(xhttp_dial_addr)")" "$CFG_XHTTP_PUBLIC_PORT" \
+      "$CFG_XHTTP_HOST" "$CFG_XHTTP_MODE" "$CFG_XHTTP_CLIENT_MODE" "$CFG_XHTTP_ALPN" >&2
+    if [[ "$CFG_XHTTP_CERTBOT_HOOK" == "1" ]]; then
+      printf '  %s: certbot (%s)\n' "$(msg label_cert_hook)" "$CFG_XHTTP_CERT_FILE" >&2
+    fi
+    if [[ "$CFG_XHTTP_WS" == "1" ]]; then
+      printf '  VLESS-WS-KeepAlive: %s:%s/tcp -> :%s, heartbeat %ss\n' \
+        "${CFG_XHTTP_LISTEN:-*}" "$CFG_XHTTP_WS_PORT" "$CFG_XHTTP_WS_PUBLIC_PORT" \
+        "$CFG_XHTTP_WS_HEARTBEAT" >&2
+    fi
+  fi
   printf '\n' >&2
 }
 
@@ -5159,6 +6517,14 @@ preflight_ports() {
     fi
     if [[ -n "$CFG_HY2_HOP_PORTS" ]] && procs="$(hy2_hop_port_conflicts "$CFG_HY2_HOP_PORTS" "${own[@]}")"; then
       die err_hy2_hop_ports_in_use "$procs"
+    fi
+  fi
+  if [[ "$CFG_XHTTP" == "1" ]]; then
+    if procs="$(port_conflict tcp "$CFG_XHTTP_PORT" "${own[@]}")"; then
+      die err_port_in_use "$CFG_XHTTP_PORT/tcp" "$procs"
+    fi
+    if [[ "$CFG_XHTTP_WS" == "1" ]] && procs="$(port_conflict tcp "$CFG_XHTTP_WS_PORT" "${own[@]}")"; then
+      die err_port_in_use "$CFG_XHTTP_WS_PORT/tcp" "$procs"
     fi
   fi
   return 0
@@ -5198,6 +6564,7 @@ ensure_core() {
   TB_PREV_CORE_BIN=""
   TB_PREV_CORE_ACTIVE=0
   check_sockopt_support "$CFG_CORE"
+  check_xhttp_core_support "$CFG_CORE"
   check_requested_core_version "$CFG_CORE"
   min="$(core_call min_version)"
   if [[ "$force" == "1" || -n "$OPT_CORE_VERSION" ]] || ! core_call is_installed; then
@@ -5278,6 +6645,7 @@ apply_config() {
   path="$(core_call config_path)"
   svc="$(core_call service)"
   check_sockopt_support "$CFG_CORE"
+  check_xhttp_core_support "$CFG_CORE"
 
   if ! core_call render >"$new"; then
     log_err err_render
@@ -5339,6 +6707,10 @@ sync_firewall() {
   [[ "$CFG_HY2" == "1" ]] && rules+=("$CFG_HY2_PORT/udp")
   if [[ "$CFG_HY2" == "1" && "$CFG_HY2_ACME" == "1" && "$CFG_HY2_CERTBOT_HOOK" == "1" ]]; then
     rules+=("80/tcp")
+  fi
+  if [[ "$CFG_XHTTP" == "1" && "$CFG_XHTTP_TLS" == "files" ]]; then
+    rules+=("$CFG_XHTTP_PORT/tcp")
+    [[ "$CFG_XHTTP_WS" == "1" ]] && rules+=("$CFG_XHTTP_WS_PORT/tcp")
   fi
   fw_sync "${rules[@]}"
 }
@@ -5422,7 +6794,8 @@ cmd_install() {
 
   preflight_ports "$old_proc"
   hy2_hop_preflight
-  if [[ "$CFG_HY2" == "1" && "$CFG_HY2_CERTBOT_HOOK" == "1" ]]; then
+  if [[ ("$CFG_HY2" == "1" && "$CFG_HY2_CERTBOT_HOOK" == "1") ||
+    ("$CFG_XHTTP" == "1" && "$CFG_XHTTP_CERTBOT_HOOK" == "1") ]]; then
     certbot_hook_preflight
   fi
   if [[ "$CFG_HY2" == "1" && "$TB_HY2_ACME_NEED_ISSUE" == "1" ]]; then
@@ -5469,7 +6842,8 @@ cmd_install() {
     die err_apply
   fi
 
-  if [[ "$CFG_HY2" == "1" && "$CFG_HY2_CERTBOT_HOOK" == "1" ]]; then
+  if [[ ("$CFG_HY2" == "1" && "$CFG_HY2_CERTBOT_HOOK" == "1") ||
+    ("$CFG_XHTTP" == "1" && "$CFG_XHTTP_CERTBOT_HOOK" == "1") ]]; then
     if ! certbot_ensure_entrypoint || ! certbot_hook_install; then
       certbot_hook_restore "$hook_backup"
       hy2_hop_restore "$hop_backup"
@@ -5532,6 +6906,7 @@ cmd_update() {
   require_state
 
   check_sockopt_support "$CFG_CORE"
+  check_xhttp_core_support "$CFG_CORE"
   core_call render >"$TB_TMP/pre-check.json" || die err_render
   ensure_core 1
   # Re-render with the current templates and restart on the new binary.
@@ -5566,7 +6941,10 @@ cmd_rotate() {
 }
 
 cmd_refresh_cert() {
-  local verify_name old_cert old_key old_sha
+  local hy2_files=0 xhttp_files=0 changed=0 had_error=0
+  local renewed="${RENEWED_LINEAGE:-}" expected_dir=""
+  local verify_name old_hy2_cert old_hy2_key old_hy2_sha
+  local old_xhttp_cert old_xhttp_key old_xhttp_sha
 
   require_root
   require_systemd
@@ -5574,40 +6952,104 @@ cmd_refresh_cert() {
   tb_acquire_lock
   require_state
 
-  [[ "$CFG_HY2" == "1" ]] || die err_refresh_requires_hy2
-  [[ "$CFG_HY2_TLS" == "files" ]] || die err_refresh_requires_files
-  if [[ -z "$CFG_HY2_CERT_FILE" || -z "$CFG_HY2_KEY_FILE" ]]; then
-    die err_hy2_cert_sources_missing
+  [[ "$CFG_HY2" == "1" && "$CFG_HY2_TLS" == "files" ]] && hy2_files=1
+  [[ "$CFG_XHTTP" == "1" && "$CFG_XHTTP_TLS" == "files" ]] && xhttp_files=1
+
+  if [[ "$hy2_files" != "1" && "$xhttp_files" != "1" ]]; then
+    if [[ "$CFG_HY2" != "1" && "$CFG_XHTTP" != "1" ]]; then
+      die err_refresh_requires_protocol
+    fi
+    die err_refresh_requires_files
   fi
 
-  tls_validate_pair_files "$CFG_HY2_CERT_FILE" "$CFG_HY2_KEY_FILE" ||
-    die err_hy2_cert_pair "$CFG_HY2_CERT_FILE" "$CFG_HY2_KEY_FILE"
-  verify_name="${CFG_HY2_SNI:-$CFG_SERVER_ADDR}"
-  tls_cert_matches_name "$CFG_HY2_CERT_FILE" "$verify_name" ||
-    die err_hy2_cert_sni_mismatch "$verify_name"
+  if [[ -n "$renewed" ]]; then
+    renewed="${renewed%/}"
+    if [[ "$hy2_files" == "1" ]]; then
+      expected_dir="$(dirname -- "${CFG_HY2_CERT_FILE:-}")"
+      [[ "${expected_dir%/}" == "$renewed" ]] || hy2_files=0
+    fi
+    if [[ "$xhttp_files" == "1" ]]; then
+      expected_dir="$(dirname -- "${CFG_XHTTP_CERT_FILE:-}")"
+      [[ "${expected_dir%/}" == "$renewed" ]] || xhttp_files=0
+    fi
+    if [[ "$hy2_files" != "1" && "$xhttp_files" != "1" ]]; then
+      return 0
+    fi
+  fi
 
-  if [[ "$TLS_CERT_PEM" == "$CFG_HY2_CERT" && "$TLS_KEY_PEM" == "$CFG_HY2_KEY" ]]; then
-    log_info info_hy2_cert_unchanged
+  old_hy2_cert="$CFG_HY2_CERT"
+  old_hy2_key="$CFG_HY2_KEY"
+  old_hy2_sha="$CFG_HY2_CERT_SHA256"
+  old_xhttp_cert="$CFG_XHTTP_CERT"
+  old_xhttp_key="$CFG_XHTTP_KEY"
+  old_xhttp_sha="$CFG_XHTTP_CERT_SHA256"
+
+  if [[ "$hy2_files" == "1" ]]; then
+    verify_name="${CFG_HY2_SNI:-$CFG_SERVER_ADDR}"
+    if [[ -z "$CFG_HY2_CERT_FILE" || -z "$CFG_HY2_KEY_FILE" ]]; then
+      log_err err_hy2_cert_sources_missing
+      had_error=1
+    elif ! tls_validate_pair_files "$CFG_HY2_CERT_FILE" "$CFG_HY2_KEY_FILE"; then
+      log_err err_hy2_cert_pair "$CFG_HY2_CERT_FILE" "$CFG_HY2_KEY_FILE"
+      had_error=1
+    elif ! tls_cert_matches_name "$CFG_HY2_CERT_FILE" "$verify_name"; then
+      log_err err_hy2_cert_sni_mismatch "$verify_name"
+      had_error=1
+    elif [[ "$TLS_CERT_PEM" != "$CFG_HY2_CERT" || "$TLS_KEY_PEM" != "$CFG_HY2_KEY" ]]; then
+      CFG_HY2_CERT="$TLS_CERT_PEM"
+      CFG_HY2_KEY="$TLS_KEY_PEM"
+      CFG_HY2_CERT_SHA256="$TLS_CERT_SHA256"
+      changed=1
+    fi
+  fi
+
+  if [[ "$xhttp_files" == "1" ]]; then
+    if [[ -z "$CFG_XHTTP_CERT_FILE" || -z "$CFG_XHTTP_KEY_FILE" ]]; then
+      log_err err_xhttp_cert_sources_missing
+      had_error=1
+    elif ! tls_validate_pair_files "$CFG_XHTTP_CERT_FILE" "$CFG_XHTTP_KEY_FILE"; then
+      log_err err_xhttp_cert_pair "$CFG_XHTTP_CERT_FILE" "$CFG_XHTTP_KEY_FILE"
+      had_error=1
+    elif ! tls_cert_matches_name "$CFG_XHTTP_CERT_FILE" "$CFG_XHTTP_HOST"; then
+      log_err err_xhttp_cert_host_mismatch "$CFG_XHTTP_HOST"
+      had_error=1
+    elif [[ "$TLS_CERT_PEM" != "$CFG_XHTTP_CERT" || "$TLS_KEY_PEM" != "$CFG_XHTTP_KEY" ]]; then
+      CFG_XHTTP_CERT="$TLS_CERT_PEM"
+      CFG_XHTTP_KEY="$TLS_KEY_PEM"
+      CFG_XHTTP_CERT_SHA256="$TLS_CERT_SHA256"
+      changed=1
+    fi
+  fi
+
+  if [[ "$changed" != "1" ]]; then
+    [[ "$had_error" == "1" ]] && exit 1
+    log_info info_cert_unchanged
     return 0
   fi
 
   core_call is_installed || die err_core_install "$CFG_CORE"
-  old_cert="$CFG_HY2_CERT"
-  old_key="$CFG_HY2_KEY"
-  old_sha="$CFG_HY2_CERT_SHA256"
-  CFG_HY2_CERT="$TLS_CERT_PEM"
-  CFG_HY2_KEY="$TLS_KEY_PEM"
-  CFG_HY2_CERT_SHA256="$TLS_CERT_SHA256"
-
-  apply_config "" "if-active" || die err_apply
+  if ! apply_config "" "if-active"; then
+    CFG_HY2_CERT="$old_hy2_cert"
+    CFG_HY2_KEY="$old_hy2_key"
+    CFG_HY2_CERT_SHA256="$old_hy2_sha"
+    CFG_XHTTP_CERT="$old_xhttp_cert"
+    CFG_XHTTP_KEY="$old_xhttp_key"
+    CFG_XHTTP_CERT_SHA256="$old_xhttp_sha"
+    die err_apply
+  fi
   if ! state_save; then
-    CFG_HY2_CERT="$old_cert"
-    CFG_HY2_KEY="$old_key"
-    CFG_HY2_CERT_SHA256="$old_sha"
+    CFG_HY2_CERT="$old_hy2_cert"
+    CFG_HY2_KEY="$old_hy2_key"
+    CFG_HY2_CERT_SHA256="$old_hy2_sha"
+    CFG_XHTTP_CERT="$old_xhttp_cert"
+    CFG_XHTTP_KEY="$old_xhttp_key"
+    CFG_XHTTP_CERT_SHA256="$old_xhttp_sha"
     rollback_applied_config
     die err_state_save "$TB_STATE_FILE"
   fi
-  log_ok ok_hy2_cert_refreshed
+  log_ok ok_cert_refreshed
+  [[ "$had_error" == "1" ]] && exit 1
+  return 0
 }
 
 cmd_uninstall() {
