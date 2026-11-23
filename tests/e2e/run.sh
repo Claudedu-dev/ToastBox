@@ -475,8 +475,12 @@ if [[ "$core" == "xray" ]]; then
     --xhttp-host xhttp.e2e.test --xhttp-path /e2e-xhttp \
     --xhttp-ws-keepalive --xhttp-ws-path /e2e-ws >/dev/null
   [[ "$(state .server_addr)" == "xhttp.e2e.test" ]] || fail "xhttp-only did not inherit server_addr"
-  tb show --format nginx | grep -Fq 'grpc_pass            grpc://127.0.0.1:10000;' || fail "nginx snippet missing grpc_pass"
-  tb show --format mihomo | grep -Fq 'mixed-port: 1080' || fail "mihomo YAML missing mixed-port"
+  # Capture first: `tb show | grep -q` trips pipefail when grep exits early
+  # and the writer dies with SIGPIPE even though the pattern matched.
+  tb show --format nginx >"$work/nginx-snippet.conf" || fail "show --format nginx failed"
+  grep -Fq 'grpc_pass            grpc://127.0.0.1:10000;' "$work/nginx-snippet.conf" || fail "nginx snippet missing grpc_pass"
+  tb show --format mihomo >"$work/mihomo.yaml" || fail "show --format mihomo failed"
+  grep -Fq 'mixed-port: 1080' "$work/mihomo.yaml" || fail "mihomo YAML missing mixed-port"
   tb show --format sing-box 2>/dev/null | jq -e '.outbounds[0].tag == "vless-ws-keepalive"' >/dev/null || fail "sing-box did not export vless-ws-keepalive"
   tb show --format xray | jq -e '.routing.rules[0].outboundTag == "vless-ws-keepalive"' >/dev/null || fail "xray client missing keep-alive routing rule"
   ss -H -ltn "sport = :10000" | grep -q . || fail "xray not listening on XHTTP loopback 10000"
